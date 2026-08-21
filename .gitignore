@@ -18,6 +18,9 @@ profile.cov
 # Dependency directories
 vendor/
 
+# Stray binary at repo root (not bin/)
+/environment-agent
+
 # Locally downloaded dev tools
 .bin/
 
@@ -28,7 +31,7 @@ go.work.sum
 # env file
 .env
 
-# Editor/IDE
+# --- Editor/IDE ---
 .idea/
 # .vscode/
 
@@ -40,3 +43,5 @@ go.work.sum
 
 .cursor/*
 !.cursor/rules
+
+hack
