@@ -3,8 +3,8 @@ package clustertest
 
 import (
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/config"
-	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/registration"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/util"
+	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/version"
 	hyperv1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -28,7 +28,7 @@ func DefaultConfig() config.ClusterConfig {
 		BaseDomain:        TestBaseDomain,
 		PullSecretName:    "test-sp-pull-secret",
 		ConsoleURIPattern: "https://console-openshift-console.apps.{name}.{base_domain}",
-		VersionMatrix:     map[string]string(registration.DefaultCompatibilityMatrix),
+		VersionMatrix:     version.DefaultCompatibilityMatrix,
 	}
 }
 

@@ -3,9 +3,9 @@ package cluster
 import (
 	"context"
 
-	v1alpha1 "github.com/dcm-project/environment-agent/api/cluster/v1alpha1"
+	"github.com/dcm-project/environment-agent/api/cluster/v1alpha1"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/config"
-	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/registration"
+	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -22,10 +22,10 @@ func ResolveReleaseImage(ctx context.Context, c client.Client, cfg config.Cluste
 	if req.Spec.ProviderHints != nil && req.Spec.ProviderHints.Acm != nil && req.Spec.ProviderHints.Acm.ReleaseImage != nil {
 		return *req.Spec.ProviderHints.Acm.ReleaseImage, nil
 	}
-	matrix := registration.CompatibilityMatrix(cfg.VersionMatrix)
+	matrix := version.CompatibilityMatrix(cfg.VersionMatrix)
 	if len(matrix) == 0 {
-		matrix = registration.DefaultCompatibilityMatrix
+		matrix = version.DefaultCompatibilityMatrix
 	}
-	resolver := NewVersionResolver(c, matrix)
+	resolver := version.NewResolver(c, matrix)
 	return resolver.Resolve(ctx, req.Spec.Version)
 }

@@ -10,9 +10,9 @@ import (
 
 	v1alpha1 "github.com/dcm-project/environment-agent/api/cluster/v1alpha1"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/config"
-	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/registration"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/service/status"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/util"
+	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/version"
 	hyperv1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -62,7 +62,7 @@ func HostedClusterToCluster(ctx context.Context, c client.Client, cfg config.Clu
 				Name: hc.Name,
 			},
 			ServiceType: v1alpha1.ClusterSpecServiceTypeCluster,
-			Version:     ReleaseImageToK8sVersion(hc.Spec.Release.Image, registration.CompatibilityMatrix(cfg.VersionMatrix)),
+			Version:     version.ReleaseImageToK8sVersion(hc.Spec.Release.Image, version.CompatibilityMatrix(cfg.VersionMatrix)),
 		},
 	}
 

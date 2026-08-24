@@ -12,11 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	v1alpha1 "github.com/dcm-project/environment-agent/api/v1alpha1"
+	"github.com/dcm-project/environment-agent/api/v1alpha1"
 	oapigen "github.com/dcm-project/environment-agent/internal/api/server"
 	"github.com/dcm-project/environment-agent/internal/apiserver"
 	"github.com/dcm-project/environment-agent/internal/config"
 	"github.com/dcm-project/environment-agent/internal/dcm"
+	"github.com/dcm-project/environment-agent/internal/embedded"
 	"github.com/dcm-project/environment-agent/internal/handler"
 	"github.com/dcm-project/environment-agent/internal/health"
 	"github.com/dcm-project/environment-agent/internal/health/monitor"
@@ -130,7 +131,24 @@ func run(ctx context.Context) int {
 
 	// Wire routing before starting messaging so handlers are set
 	denyList := routing.NewResourceSet(cfg.Routing.DenyListMaxSize)
-	forwarder := routing.NewForwarder(routing.ForwarderConfig{Logger: logger})
+
+	embeddedBundles, err := embedded.Setup(ctx, cfg, logger)
+	if err != nil {
+		logger.Error("failed to setup embedded SPs", "error", err)
+		return 1
+	}
+	if embeddedBundles != nil {
+		defer func() {
+			if closeErr := embeddedBundles.Close(); closeErr != nil {
+				logger.Error("failed to close embedded SPs", "error", closeErr)
+			}
+		}()
+	}
+
+	forwarder := routing.NewForwarder(routing.ForwarderConfig{
+		Embedded: embedded.Handlers(embeddedBundles),
+		Logger:   logger,
+	})
 	router := routing.NewRouter(routing.RouterDeps{
 		Registry:      registry,
 		HealthTracker: healthTracker,
@@ -238,7 +256,11 @@ func run(ctx context.Context) int {
 	readyCtx, readyCancel := context.WithTimeout(ctx, registerEmbeddedSetupWait)
 	msgClient.WaitUntilReady(readyCtx)
 	readyCancel()
+	providerSvc.SetEmbeddedCheckers(embedded.Checkers(embeddedBundles))
 	providerSvc.RegisterEmbedded(cfg.Provider.EmbeddedSPs)
+	if embeddedBundles != nil {
+		embeddedBundles.Start(ctx)
+	}
 
 	healthMonitor.Start(ctx)
 	defer healthMonitor.Stop()

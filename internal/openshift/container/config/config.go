@@ -8,28 +8,9 @@ import (
 	env "github.com/caarlos0/env/v11"
 )
 
-// ServerConfig holds HTTP server settings.
-type ServerConfig struct {
-	Address         string        `env:"ADDRESS"          envDefault:":8080"`
-	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"15s"`
-	ReadTimeout     time.Duration `env:"READ_TIMEOUT"     envDefault:"15s"`
-	WriteTimeout    time.Duration `env:"WRITE_TIMEOUT"    envDefault:"15s"`
-	IdleTimeout     time.Duration `env:"IDLE_TIMEOUT"     envDefault:"60s"`
-	RequestTimeout  time.Duration `env:"REQUEST_TIMEOUT"  envDefault:"30s"`
-}
-
-// ProviderConfig holds service provider identity and metadata.
+// ProviderConfig holds the embedded SP identity used for NATS publishing and labeling.
 type ProviderConfig struct {
-	Name        string `env:"NAME,notEmpty"`
-	DisplayName string `env:"DISPLAY_NAME"`
-	Endpoint    string `env:"ENDPOINT,notEmpty"`
-	Region      string `env:"REGION"`
-	Zone        string `env:"ZONE"`
-}
-
-// DCMConfig holds DCM registry connection settings.
-type DCMConfig struct {
-	RegistrationURL string `env:"REGISTRATION_URL,notEmpty"`
+	Name string `env:"SP_NAME" envDefault:"container-sp"`
 }
 
 // KubernetesConfig holds Kubernetes-specific settings.
@@ -39,41 +20,46 @@ type KubernetesConfig struct {
 	ExternalServiceType string `env:"EXTERNAL_SVC_TYPE"` // Must be NodePort or LoadBalancer
 }
 
-// NATSConfig holds NATS connection settings.
-type NATSConfig struct {
-	URL string `env:"URL,notEmpty"`
-}
-
 // MonitoringConfig holds status monitoring settings.
 type MonitoringConfig struct {
 	DebounceMs   int           `env:"DEBOUNCE_MS"   envDefault:"500"`
 	ResyncPeriod time.Duration `env:"RESYNC_PERIOD" envDefault:"10m"`
 }
 
-// Config is the root configuration for the service provider.
+// Config is the root configuration for the embedded container service provider.
 type Config struct {
-	Server     ServerConfig     `envPrefix:"SP_SERVER_"`
-	Provider   ProviderConfig   `envPrefix:"SP_"`
-	DCM        DCMConfig        `envPrefix:"DCM_"`
-	Kubernetes KubernetesConfig `envPrefix:"SP_K8S_"`
-	NATS       NATSConfig       `envPrefix:"SP_NATS_"`
-	Monitoring MonitoringConfig `envPrefix:"SP_MONITOR_"`
+	Provider   ProviderConfig
+	Kubernetes KubernetesConfig
+	Monitoring MonitoringConfig
+	NATSURL    string
 }
 
-// Load reads configuration from environment variables.
-// Env vars: SP_SERVER_*, SP_*, DCM_*, SP_K8S_* (see struct tags for details).
-func Load() (*Config, error) {
-	cfg := &Config{}
-	if err := env.Parse(cfg); err != nil {
-		return nil, fmt.Errorf("loading configuration: %w", err)
+// Load reads container SP configuration from environment variables.
+// messagingURL is the agent NATS URL (AGENT_MESSAGING_URL).
+func Load(messagingURL string) (*Config, error) {
+	if messagingURL == "" {
+		return nil, fmt.Errorf("messaging URL is required")
 	}
-	if err := cfg.validate(); err != nil {
+
+	cfg := &Config{}
+	if err := env.ParseWithOptions(&cfg.Kubernetes, env.Options{Prefix: "SP_K8S_"}); err != nil {
+		return nil, fmt.Errorf("loading kubernetes config: %w", err)
+	}
+	if err := env.ParseWithOptions(&cfg.Monitoring, env.Options{Prefix: "SP_MONITOR_"}); err != nil {
+		return nil, fmt.Errorf("loading monitoring config: %w", err)
+	}
+	if err := env.ParseWithOptions(&cfg.Provider, env.Options{}); err != nil {
+		return nil, fmt.Errorf("loading provider config: %w", err)
+	}
+	cfg.NATSURL = messagingURL
+
+	if err := cfg.validateKubernetes(); err != nil {
 		return nil, fmt.Errorf("loading configuration: %w", err)
 	}
 	return cfg, nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) validateKubernetes() error {
 	switch c.Kubernetes.ExternalServiceType {
 	case "LoadBalancer", "NodePort":
 		return nil

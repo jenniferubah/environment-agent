@@ -1,0 +1,98 @@
+// Package container embeds the k8s container service provider in the agent.
+package container
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+
+	containerapi "github.com/dcm-project/environment-agent/api/container/v1alpha1"
+	"github.com/dcm-project/environment-agent/internal/openshift/container/store"
+	"github.com/dcm-project/environment-agent/internal/routing"
+)
+
+// ServiceType is the embedded SP identifier for the container service provider.
+const ServiceType = "container"
+
+// containerLifecycle is the subset of store.Repository the embedded handler needs.
+type containerLifecycle interface {
+	Create(ctx context.Context, spec containerapi.ContainerSpec, id string) (*containerapi.Container, error)
+	Delete(ctx context.Context, containerID string) error
+}
+
+// containerHandler implements routing.EmbeddedHandler for in-process container lifecycle.
+type containerHandler struct {
+	lifecycle containerLifecycle
+	logger    *slog.Logger
+}
+
+var _ routing.EmbeddedHandler = (*containerHandler)(nil)
+
+// NewContainerHandler creates an embedded container handler.
+func NewContainerHandler(lifecycle containerLifecycle, logger *slog.Logger) routing.EmbeddedHandler {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &containerHandler{lifecycle: lifecycle, logger: logger}
+}
+
+func (h *containerHandler) CreateResource(ctx context.Context, req routing.CreateResourceRequest) error {
+	spec, err := parseContainerSpec(req.Spec)
+	if err != nil {
+		return &routing.SPResponseError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+
+	_, err = h.lifecycle.Create(ctx, spec, req.ResourceID)
+	if err != nil {
+		h.logger.Warn("embedded container create failed",
+			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
+		return mapStoreError(err)
+	}
+	return nil
+}
+
+func (h *containerHandler) DeleteResource(ctx context.Context, req routing.DeleteResourceRequest) error {
+	err := h.lifecycle.Delete(ctx, req.ResourceID)
+	if err != nil {
+		h.logger.Warn("embedded container delete failed",
+			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
+		return mapStoreError(err)
+	}
+	return nil
+}
+
+func parseContainerSpec(raw json.RawMessage) (containerapi.ContainerSpec, error) {
+	if len(raw) == 0 {
+		return containerapi.ContainerSpec{}, fmt.Errorf("spec is required")
+	}
+
+	var container containerapi.Container
+	if err := json.Unmarshal(raw, &container); err == nil && container.Spec.Metadata.Name != "" {
+		return container.Spec, nil
+	}
+
+	var spec containerapi.ContainerSpec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return containerapi.ContainerSpec{}, fmt.Errorf("invalid container spec: %w", err)
+	}
+	return spec, nil
+}
+
+func mapStoreError(err error) error {
+	var notFound *store.NotFoundError
+	if errors.As(err, &notFound) {
+		return &routing.SPResponseError{StatusCode: http.StatusNotFound, Message: err.Error()}
+	}
+	var conflict *store.ConflictError
+	if errors.As(err, &conflict) {
+		return &routing.SPResponseError{StatusCode: http.StatusConflict, Message: err.Error()}
+	}
+	var invalid *store.InvalidArgumentError
+	if errors.As(err, &invalid) {
+		return &routing.SPResponseError{StatusCode: http.StatusBadRequest, Message: err.Error()}
+	}
+	return &routing.SPResponseError{StatusCode: http.StatusInternalServerError, Message: err.Error()}
+}
