@@ -9,6 +9,7 @@ import (
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/config"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/service"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/util"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -99,7 +100,7 @@ var _ = Describe("config.Load", func() {
 		GinkgoT().Setenv("SP_CLUSTER_NAMESPACE", "clusters")
 		GinkgoT().Setenv("SP_PULL_SECRET", "c2VjcmV0")
 
-		cfg, err := config.Load("nats://agent:4222")
+		cfg, err := config.Load(shared.Config{MessagingURL: "nats://agent:4222"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg.Monitoring.NATSUrl).To(Equal("nats://agent:4222"))
 		Expect(cfg.Registration.ProviderName).To(Equal("acm-cluster-sp"))

@@ -10,6 +10,7 @@ import (
 	"github.com/dcm-project/environment-agent/internal/health/monitor"
 	vmapp "github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/app"
 	vmcfg "github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/config"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 	"github.com/dcm-project/environment-agent/internal/routing"
 )
 
@@ -36,7 +37,7 @@ func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*
 		return nil, nil
 	}
 
-	cfg, err := vmcfg.Load(agentCfg.Messaging.URL)
+	cfg, err := vmcfg.Load(shared.FromAgent(agentCfg))
 	if err != nil {
 		return nil, fmt.Errorf("loading VM SP config: %w", err)
 	}

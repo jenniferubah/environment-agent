@@ -10,6 +10,7 @@ import (
 	"github.com/dcm-project/environment-agent/internal/health/monitor"
 	containerapp "github.com/dcm-project/environment-agent/internal/openshift/container/app"
 	containercfg "github.com/dcm-project/environment-agent/internal/openshift/container/config"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 	"github.com/dcm-project/environment-agent/internal/routing"
 )
 
@@ -36,7 +37,7 @@ func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*
 		return nil, nil
 	}
 
-	cfg, err := containercfg.Load(agentCfg.Messaging.URL)
+	cfg, err := containercfg.Load(shared.FromAgent(agentCfg))
 	if err != nil {
 		return nil, fmt.Errorf("loading container SP config: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -46,9 +47,9 @@ type Config struct {
 }
 
 // Load reads VM SP configuration from environment variables.
-// messagingURL is the agent NATS URL (AGENT_MESSAGING_URL).
-func Load(messagingURL string) (*Config, error) {
-	if messagingURL == "" {
+// shared carries agent-level messaging URL and default kubeconfig.
+func Load(shared shared.Config) (*Config, error) {
+	if shared.MessagingURL == "" {
 		return nil, fmt.Errorf("messaging URL is required")
 	}
 
@@ -60,6 +61,11 @@ func Load(messagingURL string) (*Config, error) {
 	if err := envconfig.Process("", cfg); err != nil {
 		return nil, err
 	}
-	cfg.NATSConfig.URL = messagingURL
+	cfg.NATSConfig.URL = shared.MessagingURL
+
+	if cfg.KubernetesConfig.Kubeconfig == "" {
+		cfg.KubernetesConfig.Kubeconfig = shared.Kubeconfig
+	}
+
 	return cfg, nil
 }

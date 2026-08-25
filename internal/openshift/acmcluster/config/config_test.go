@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/config"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 )
 
 var _ = Describe("Config", func() {
@@ -22,6 +23,10 @@ var _ = Describe("Config", func() {
 		}
 	}
 
+	sharedDefaults := func() shared.Config {
+		return shared.Config{MessagingURL: "nats://localhost:4222"}
+	}
+
 	DescribeTable("required config missing causes fail-fast",
 		func(missingVar string) {
 			for k, v := range requiredVars {
@@ -33,7 +38,7 @@ var _ = Describe("Config", func() {
 			GinkgoT().Setenv(missingVar, "")
 			Expect(os.Unsetenv(missingVar)).To(Succeed())
 
-			_, err := config.Load("nats://localhost:4222")
+			_, err := config.Load(sharedDefaults())
 			Expect(err).To(HaveOccurred(), "Load() should fail when %s is missing", missingVar)
 		},
 		Entry("SP_CLUSTER_NAMESPACE missing", "SP_CLUSTER_NAMESPACE"),
@@ -43,7 +48,7 @@ var _ = Describe("Config", func() {
 	It("applies defaults when optional vars are not set", func() {
 		setAllRequired()
 
-		cfg, err := config.Load("nats://localhost:4222")
+		cfg, err := config.Load(sharedDefaults())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg.Monitoring.NATSUrl).To(Equal("nats://localhost:4222"))
 		Expect(cfg.Registration.ProviderName).To(Equal("acm-cluster-sp"))
@@ -57,9 +62,32 @@ var _ = Describe("Config", func() {
 	It("returns error when messaging URL is empty", func() {
 		setAllRequired()
 
-		cfg, err := config.Load("")
+		cfg, err := config.Load(shared.Config{})
 		Expect(err).To(HaveOccurred())
 		Expect(cfg).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("messaging URL is required"))
+	})
+
+	It("uses agent kubeconfig when SP_KUBECONFIG is unset", func() {
+		setAllRequired()
+
+		cfg, err := config.Load(shared.Config{
+			MessagingURL: "nats://localhost:4222",
+			Kubeconfig:   "/etc/agent/kubeconfig",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Kubernetes.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
+	})
+
+	It("prefers SP_KUBECONFIG over agent kubeconfig", func() {
+		setAllRequired()
+		GinkgoT().Setenv("SP_KUBECONFIG", "/sp/kubeconfig")
+
+		cfg, err := config.Load(shared.Config{
+			MessagingURL: "nats://localhost:4222",
+			Kubeconfig:   "/agent/kubeconfig",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Kubernetes.Kubeconfig).To(Equal("/sp/kubeconfig"))
 	})
 })

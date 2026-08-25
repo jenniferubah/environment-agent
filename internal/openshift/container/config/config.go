@@ -6,6 +6,7 @@ import (
 	"time"
 
 	env "github.com/caarlos0/env/v11"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 )
 
 // ProviderConfig holds the embedded SP identity used for NATS publishing and labeling.
@@ -35,9 +36,9 @@ type Config struct {
 }
 
 // Load reads container SP configuration from environment variables.
-// messagingURL is the agent NATS URL (AGENT_MESSAGING_URL).
-func Load(messagingURL string) (*Config, error) {
-	if messagingURL == "" {
+// shared carries agent-level messaging URL and default kubeconfig.
+func Load(shared shared.Config) (*Config, error) {
+	if shared.MessagingURL == "" {
 		return nil, fmt.Errorf("messaging URL is required")
 	}
 
@@ -51,7 +52,11 @@ func Load(messagingURL string) (*Config, error) {
 	if err := env.ParseWithOptions(&cfg.Provider, env.Options{}); err != nil {
 		return nil, fmt.Errorf("loading provider config: %w", err)
 	}
-	cfg.NATSURL = messagingURL
+	cfg.NATSURL = shared.MessagingURL
+
+	if cfg.Kubernetes.Kubeconfig == "" {
+		cfg.Kubernetes.Kubeconfig = shared.Kubeconfig
+	}
 
 	if err := cfg.validateKubernetes(); err != nil {
 		return nil, fmt.Errorf("loading configuration: %w", err)

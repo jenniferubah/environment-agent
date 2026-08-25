@@ -16,9 +16,10 @@ import (
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/service"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/util"
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/version"
+	"github.com/dcm-project/environment-agent/internal/openshift/kubeconfig"
+	"github.com/dcm-project/environment-agent/internal/openshift/worker"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -30,11 +31,9 @@ type App struct {
 	monitor        *monitoring.StatusMonitor
 	publisher      *monitoring.NATSPublisher
 	logger         *slog.Logger
+	background     worker.Background
 
-	startOnce     sync.Once
-	monitorCancel context.CancelFunc
-	monitorDone   chan struct{}
-	closeOnce     sync.Once
+	closeOnce sync.Once
 }
 
 // PrepareConfig loads derived configuration values that are not set directly
@@ -68,7 +67,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, opts Opti
 		return nil, fmt.Errorf("cluster pull secret name is empty")
 	}
 
-	restCfg, k8sClient, err := resolveKubernetesClients(opts)
+	restCfg, k8sClient, err := resolveKubernetesClients(cfg.Kubernetes.Kubeconfig, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +91,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, opts Opti
 	return a, nil
 }
 
-func resolveKubernetesClients(opts Options) (*rest.Config, client.Client, error) {
+func resolveKubernetesClients(kubeconfigPath string, opts Options) (*rest.Config, client.Client, error) {
 	if opts.KubernetesClient != nil {
 		if opts.DisableMonitor || opts.RestConfig != nil {
 			return opts.RestConfig, opts.KubernetesClient, nil
@@ -100,9 +99,9 @@ func resolveKubernetesClients(opts Options) (*rest.Config, client.Client, error)
 		return nil, nil, fmt.Errorf("RestConfig is required when KubernetesClient is set and status monitor is enabled")
 	}
 
-	restCfg, err := ctrl.GetConfig()
+	restCfg, err := kubeconfig.RESTConfig(kubeconfigPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("loading kubeconfig: %w", err)
+		return nil, nil, err
 	}
 
 	scheme, err := util.BuildScheme()
@@ -174,22 +173,13 @@ func (a *App) HealthChecker() service.HealthChecker {
 
 // Start launches background workers (status monitor). It is non-blocking.
 func (a *App) Start(ctx context.Context) {
-	a.startOnce.Do(func() {
+	a.background.Start(ctx, func(taskCtx context.Context) error {
 		if a.monitor == nil {
-			return
+			return nil
 		}
-
-		monitorCtx, cancel := context.WithCancel(ctx)
-		a.monitorCancel = cancel
-		done := make(chan struct{})
-		a.monitorDone = done
-
-		go func() {
-			defer close(done)
-			if err := a.monitor.Start(monitorCtx); err != nil && monitorCtx.Err() == nil {
-				a.logger.Error("status monitor failed", "error", err)
-			}
-		}()
+		return a.monitor.Start(taskCtx)
+	}, func(err error) {
+		a.logger.Error("status monitor failed", "error", err)
 	})
 }
 
@@ -198,15 +188,11 @@ func (a *App) Start(ctx context.Context) {
 func (a *App) Close() error {
 	var err error
 	a.closeOnce.Do(func() {
-		if a.monitorCancel != nil {
-			a.monitorCancel()
-		}
-		if a.monitorDone != nil {
-			<-a.monitorDone
-		}
+		var closers []worker.Closer
 		if a.publisher != nil {
-			err = a.publisher.Close()
+			closers = append(closers, a.publisher)
 		}
+		err = worker.Close(&a.background, closers...)
 	})
 	return err
 }

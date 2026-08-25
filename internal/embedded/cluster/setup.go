@@ -10,6 +10,7 @@ import (
 	"github.com/dcm-project/environment-agent/internal/health/monitor"
 	acmapp "github.com/dcm-project/environment-agent/internal/openshift/acmcluster/app"
 	acmconfig "github.com/dcm-project/environment-agent/internal/openshift/acmcluster/config"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 	"github.com/dcm-project/environment-agent/internal/routing"
 )
 
@@ -36,7 +37,7 @@ func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*
 		return nil, nil
 	}
 
-	acmCfg, err := acmconfig.Load(agentCfg.Messaging.URL)
+	acmCfg, err := acmconfig.Load(shared.FromAgent(agentCfg))
 	if err != nil {
 		return nil, fmt.Errorf("loading cluster SP config: %w", err)
 	}

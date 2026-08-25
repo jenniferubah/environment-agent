@@ -11,20 +11,19 @@ import (
 	"github.com/dcm-project/environment-agent/internal/openshift/container/kubernetes"
 	"github.com/dcm-project/environment-agent/internal/openshift/container/monitoring"
 	"github.com/dcm-project/environment-agent/internal/openshift/container/store"
+	"github.com/dcm-project/environment-agent/internal/openshift/worker"
 )
 
 // App holds wired domain services and optional background workers.
 type App struct {
-	cfg       *config.Config
-	repo      store.ContainerRepository
-	publisher *monitoring.NATSPublisher
-	monitor   *monitoring.StatusMonitor
-	logger    *slog.Logger
+	cfg        *config.Config
+	repo       store.ContainerRepository
+	publisher  *monitoring.NATSPublisher
+	monitor    *monitoring.StatusMonitor
+	logger     *slog.Logger
+	background worker.Background
 
-	startOnce     sync.Once
-	monitorCancel context.CancelFunc
-	monitorDone   chan struct{}
-	closeOnce     sync.Once
+	closeOnce sync.Once
 }
 
 // Options configures App construction and background lifecycle.
@@ -103,22 +102,13 @@ func (a *App) Store() store.ContainerRepository {
 
 // Start launches background workers (status monitor). It is non-blocking.
 func (a *App) Start(ctx context.Context) {
-	a.startOnce.Do(func() {
+	a.background.Start(ctx, func(taskCtx context.Context) error {
 		if a.monitor == nil {
-			return
+			return nil
 		}
-
-		monitorCtx, cancel := context.WithCancel(ctx)
-		a.monitorCancel = cancel
-		done := make(chan struct{})
-		a.monitorDone = done
-
-		go func() {
-			defer close(done)
-			if err := a.monitor.Start(monitorCtx); err != nil && monitorCtx.Err() == nil {
-				a.logger.Error("container status monitor failed", "error", err)
-			}
-		}()
+		return a.monitor.Start(taskCtx)
+	}, func(err error) {
+		a.logger.Error("container status monitor failed", "error", err)
 	})
 }
 
@@ -126,15 +116,11 @@ func (a *App) Start(ctx context.Context) {
 func (a *App) Close() error {
 	var err error
 	a.closeOnce.Do(func() {
-		if a.monitorCancel != nil {
-			a.monitorCancel()
-		}
-		if a.monitorDone != nil {
-			<-a.monitorDone
-		}
+		var closers []worker.Closer
 		if a.publisher != nil {
-			err = a.publisher.Close()
+			closers = append(closers, a.publisher)
 		}
+		err = worker.Close(&a.background, closers...)
 	})
 	return err
 }

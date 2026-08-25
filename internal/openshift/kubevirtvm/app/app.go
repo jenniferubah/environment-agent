@@ -11,20 +11,19 @@ import (
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/events"
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/kubevirt"
 	kubevirtmonitor "github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/monitor"
+	"github.com/dcm-project/environment-agent/internal/openshift/worker"
 )
 
 // App holds wired domain services and optional background workers.
 type App struct {
-	client    *kubevirt.Client
-	mapper    *kubevirt.Mapper
-	publisher *events.Publisher
-	monitor   *kubevirtmonitor.Service
-	logger    *slog.Logger
+	client     *kubevirt.Client
+	mapper     *kubevirt.Mapper
+	publisher  *events.Publisher
+	monitor    *kubevirtmonitor.Service
+	logger     *slog.Logger
+	background worker.Background
 
-	startOnce     sync.Once
-	monitorCancel context.CancelFunc
-	monitorDone   chan struct{}
-	closeOnce     sync.Once
+	closeOnce sync.Once
 }
 
 // Options configures App construction and background lifecycle.
@@ -87,22 +86,13 @@ func (a *App) Mapper() *kubevirt.Mapper {
 
 // Start launches background workers (event monitor). It is non-blocking.
 func (a *App) Start(ctx context.Context) {
-	a.startOnce.Do(func() {
+	a.background.Start(ctx, func(taskCtx context.Context) error {
 		if a.monitor == nil {
-			return
+			return nil
 		}
-
-		monitorCtx, cancel := context.WithCancel(ctx)
-		a.monitorCancel = cancel
-		done := make(chan struct{})
-		a.monitorDone = done
-
-		go func() {
-			defer close(done)
-			if err := a.monitor.Run(monitorCtx); err != nil && monitorCtx.Err() == nil {
-				a.logger.Error("VM monitor failed", "error", err)
-			}
-		}()
+		return a.monitor.Run(taskCtx)
+	}, func(err error) {
+		a.logger.Error("VM monitor failed", "error", err)
 	})
 }
 
@@ -110,15 +100,11 @@ func (a *App) Start(ctx context.Context) {
 func (a *App) Close() error {
 	var err error
 	a.closeOnce.Do(func() {
-		if a.monitorCancel != nil {
-			a.monitorCancel()
-		}
-		if a.monitorDone != nil {
-			<-a.monitorDone
-		}
+		var closers []worker.Closer
 		if a.publisher != nil {
-			err = a.publisher.Close()
+			closers = append(closers, a.publisher)
 		}
+		err = worker.Close(&a.background, closers...)
 	})
 	return err
 }
