@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/config"
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/events"
@@ -16,14 +15,12 @@ import (
 
 // App holds wired domain services and optional background workers.
 type App struct {
-	client     *kubevirt.Client
-	mapper     *kubevirt.Mapper
-	publisher  *events.Publisher
-	monitor    *kubevirtmonitor.Service
-	logger     *slog.Logger
-	background worker.Background
-
-	closeOnce sync.Once
+	client    *kubevirt.Client
+	mapper    *kubevirt.Mapper
+	publisher *events.Publisher
+	monitor   *kubevirtmonitor.Service
+	logger    *slog.Logger
+	lifecycle worker.AppLifecycle
 }
 
 // Options configures App construction and background lifecycle.
@@ -41,35 +38,37 @@ func New(_ context.Context, cfg *config.Config, logger *slog.Logger, opts Option
 		logger = slog.Default()
 	}
 
-	client, err := kubevirt.NewClient(cfg.KubernetesConfig)
+	client, err := kubevirt.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kubevirt client: %w", err)
 	}
 
 	a := &App{
-		client: client,
-		mapper: kubevirt.NewMapper(cfg.KubernetesConfig.Namespace),
-		logger: logger,
+		client:    client,
+		mapper:    kubevirt.NewMapper(cfg.Namespace),
+		logger:    logger,
+		lifecycle: worker.NewAppLifecycle(logger),
 	}
 
-	if opts.DisableMonitor || !cfg.EventConfig.Enabled {
+	if opts.DisableMonitor || !cfg.EventsEnabled {
 		return a, nil
 	}
 
 	publisher, err := events.NewPublisher(events.PublisherConfig{
-		NATSURL:      cfg.NATSConfig.URL,
-		Subject:      cfg.NATSConfig.Subject,
-		MaxReconnect: cfg.NATSConfig.MaxReconnect,
+		NATSURL:      cfg.MessagingURL,
+		Subject:      cfg.NATSSubject,
+		MaxReconnect: cfg.NATSMaxReconnect,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating VM event publisher: %w", err)
 	}
 
 	monitorCfg := kubevirtmonitor.MonitorConfig{
-		Namespace:    cfg.KubernetesConfig.Namespace,
-		ResyncPeriod: cfg.EventConfig.ResyncPeriod,
+		Namespace:    cfg.Namespace,
+		ResyncPeriod: cfg.EventsResyncPeriod,
 	}
 	a.publisher = publisher
+	a.lifecycle.RegisterCloser(publisher)
 	a.monitor = kubevirtmonitor.NewMonitorService(client.DynamicClient(), publisher, monitorCfg)
 	return a, nil
 }
@@ -86,25 +85,15 @@ func (a *App) Mapper() *kubevirt.Mapper {
 
 // Start launches background workers (event monitor). It is non-blocking.
 func (a *App) Start(ctx context.Context) {
-	a.background.Start(ctx, func(taskCtx context.Context) error {
+	a.lifecycle.Start(ctx, func(taskCtx context.Context) error {
 		if a.monitor == nil {
 			return nil
 		}
 		return a.monitor.Run(taskCtx)
-	}, func(err error) {
-		a.logger.Error("VM monitor failed", "error", err)
-	})
+	}, "VM monitor failed")
 }
 
 // Close stops the event monitor and releases resources such as the NATS connection.
 func (a *App) Close() error {
-	var err error
-	a.closeOnce.Do(func() {
-		var closers []worker.Closer
-		if a.publisher != nil {
-			closers = append(closers, a.publisher)
-		}
-		err = worker.Close(&a.background, closers...)
-	})
-	return err
+	return a.lifecycle.Close()
 }

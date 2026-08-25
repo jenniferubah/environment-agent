@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 
 	"github.com/dcm-project/environment-agent/internal/openshift/container/config"
 	"github.com/dcm-project/environment-agent/internal/openshift/container/kubernetes"
@@ -16,14 +15,12 @@ import (
 
 // App holds wired domain services and optional background workers.
 type App struct {
-	cfg        *config.Config
-	repo       store.ContainerRepository
-	publisher  *monitoring.NATSPublisher
-	monitor    *monitoring.StatusMonitor
-	logger     *slog.Logger
-	background worker.Background
-
-	closeOnce sync.Once
+	cfg       *config.Config
+	repo      store.ContainerRepository
+	publisher *monitoring.NATSPublisher
+	monitor   *monitoring.StatusMonitor
+	logger    *slog.Logger
+	lifecycle worker.AppLifecycle
 }
 
 // Options configures App construction and background lifecycle.
@@ -41,7 +38,7 @@ func New(_ context.Context, cfg *config.Config, logger *slog.Logger, opts Option
 		logger = slog.Default()
 	}
 
-	a := &App{cfg: cfg, logger: logger}
+	a := &App{cfg: cfg, logger: logger, lifecycle: worker.NewAppLifecycle(logger)}
 
 	if opts.DisableMonitor {
 		repo, err := a.buildStore()
@@ -52,45 +49,46 @@ func New(_ context.Context, cfg *config.Config, logger *slog.Logger, opts Option
 		return a, nil
 	}
 
-	publisher, err := monitoring.NewNATSPublisher(cfg.NATSURL, cfg.Provider.Name, logger)
+	publisher, err := monitoring.NewNATSPublisher(cfg.MessagingURL, cfg.Name, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating NATS publisher: %w", err)
 	}
 
-	k8sClient, err := kubernetes.NewClient(cfg.Kubernetes.Kubeconfig)
+	k8sClient, err := kubernetes.NewClient(cfg.Kubeconfig)
 	if err != nil {
 		_ = publisher.Close()
 		return nil, fmt.Errorf("creating kubernetes client: %w", err)
 	}
 
 	k8sCfg := kubernetes.K8sConfig{
-		Namespace:           cfg.Kubernetes.Namespace,
-		ExternalServiceType: cfg.Kubernetes.ExternalServiceType,
+		Namespace:           cfg.Namespace,
+		ExternalServiceType: cfg.ExternalServiceType,
 	}
 	repo := kubernetes.NewK8sContainerStore(k8sClient, k8sCfg, logger)
 
 	monitorCfg := monitoring.MonitorConfig{
-		Namespace:    cfg.Kubernetes.Namespace,
-		ProviderName: cfg.Provider.Name,
-		DebounceMs:   cfg.Monitoring.DebounceMs,
-		ResyncPeriod: cfg.Monitoring.ResyncPeriod,
+		Namespace:    cfg.Namespace,
+		ProviderName: cfg.Name,
+		DebounceMs:   cfg.DebounceMs,
+		ResyncPeriod: cfg.ResyncPeriod,
 	}
 	statusMonitor := monitoring.NewStatusMonitor(k8sClient, monitorCfg, publisher, logger)
 
 	a.repo = repo
 	a.publisher = publisher
+	a.lifecycle.RegisterCloser(publisher)
 	a.monitor = statusMonitor
 	return a, nil
 }
 
 func (a *App) buildStore() (store.ContainerRepository, error) {
-	k8sClient, err := kubernetes.NewClient(a.cfg.Kubernetes.Kubeconfig)
+	k8sClient, err := kubernetes.NewClient(a.cfg.Kubeconfig)
 	if err != nil {
 		return nil, fmt.Errorf("creating kubernetes client: %w", err)
 	}
 	k8sCfg := kubernetes.K8sConfig{
-		Namespace:           a.cfg.Kubernetes.Namespace,
-		ExternalServiceType: a.cfg.Kubernetes.ExternalServiceType,
+		Namespace:           a.cfg.Namespace,
+		ExternalServiceType: a.cfg.ExternalServiceType,
 	}
 	return kubernetes.NewK8sContainerStore(k8sClient, k8sCfg, a.logger), nil
 }
@@ -102,25 +100,15 @@ func (a *App) Store() store.ContainerRepository {
 
 // Start launches background workers (status monitor). It is non-blocking.
 func (a *App) Start(ctx context.Context) {
-	a.background.Start(ctx, func(taskCtx context.Context) error {
+	a.lifecycle.Start(ctx, func(taskCtx context.Context) error {
 		if a.monitor == nil {
 			return nil
 		}
 		return a.monitor.Start(taskCtx)
-	}, func(err error) {
-		a.logger.Error("container status monitor failed", "error", err)
-	})
+	}, "container status monitor failed")
 }
 
 // Close stops the status monitor and releases resources such as the NATS connection.
 func (a *App) Close() error {
-	var err error
-	a.closeOnce.Do(func() {
-		var closers []worker.Closer
-		if a.publisher != nil {
-			closers = append(closers, a.publisher)
-		}
-		err = worker.Close(&a.background, closers...)
-	})
-	return err
+	return a.lifecycle.Close()
 }

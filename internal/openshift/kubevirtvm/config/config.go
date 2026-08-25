@@ -5,67 +5,35 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/dcm-project/environment-agent/internal/openshift/shared"
-	"github.com/kelseyhightower/envconfig"
 )
 
-// KubernetesConfig holds configuration for connecting to Kubernetes/KubeVirt.
-type KubernetesConfig struct {
-	// Kubeconfig path for connecting to Kubernetes cluster (optional, defaults to in-cluster).
-	Kubeconfig string `envconfig:"KUBERNETES_KUBECONFIG"`
-	// Namespace for creating VMs.
-	Namespace string `envconfig:"KUBERNETES_NAMESPACE" default:"default"`
-	// Timeout for Kubernetes API requests.
-	Timeout time.Duration `envconfig:"KUBERNETES_TIMEOUT" default:"60s"`
-	// MaxRetries for failed operations.
-	MaxRetries int `envconfig:"KUBERNETES_MAX_RETRIES" default:"3"`
-}
-
-// NATSConfig holds configuration for NATS connection.
-type NATSConfig struct {
-	// URL is the agent NATS URL (AGENT_MESSAGING_URL); not loaded from env.
-	URL string `envconfig:"-"`
-	// MaxReconnect attempts (-1 for unlimited).
-	MaxReconnect int `envconfig:"NATS_MAX_RECONNECT" default:"-1"`
-	// Subject is the JetStream subject for VM events.
-	Subject string `envconfig:"NATS_SUBJECT" default:"dcm.vm"`
-}
-
-// EventConfig holds configuration for event monitoring.
-type EventConfig struct {
-	// Enabled controls whether event monitoring is active.
-	Enabled bool `envconfig:"EVENTS_ENABLED" default:"true"`
-	// ResyncPeriod for Kubernetes informers.
-	ResyncPeriod time.Duration `envconfig:"EVENTS_RESYNC_PERIOD" default:"30m"`
-}
+const defaultProviderName = "kubevirt-vm-sp"
 
 // Config is the root configuration for the embedded VM service provider.
 type Config struct {
-	KubernetesConfig *KubernetesConfig
-	NATSConfig       *NATSConfig
-	EventConfig      *EventConfig
+	shared.Config
+	Namespace          string        `env:"KUBERNETES_NAMESPACE" envDefault:"default"`
+	Timeout            time.Duration `env:"KUBERNETES_TIMEOUT" envDefault:"60s"`
+	MaxRetries         int           `env:"KUBERNETES_MAX_RETRIES" envDefault:"3"`
+	NATSMaxReconnect   int           `env:"NATS_MAX_RECONNECT" envDefault:"-1"`
+	NATSSubject        string        `env:"NATS_SUBJECT" envDefault:"dcm.vm"`
+	EventsEnabled      bool          `env:"EVENTS_ENABLED" envDefault:"true"`
+	EventsResyncPeriod time.Duration `env:"EVENTS_RESYNC_PERIOD" envDefault:"30m"`
 }
 
 // Load reads VM SP configuration from environment variables.
-// shared carries agent-level messaging URL and default kubeconfig.
-func Load(shared shared.Config) (*Config, error) {
-	if shared.MessagingURL == "" {
-		return nil, fmt.Errorf("messaging URL is required")
+func Load(agent shared.Agent) (*Config, error) {
+	cfg := &Config{}
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("loading VM SP config: %w", err)
 	}
-
-	cfg := &Config{
-		KubernetesConfig: &KubernetesConfig{},
-		NATSConfig:       &NATSConfig{},
-		EventConfig:      &EventConfig{},
+	if cfg.Name == "" {
+		cfg.Name = defaultProviderName
 	}
-	if err := envconfig.Process("", cfg); err != nil {
+	if err := shared.Apply(&cfg.Config, agent); err != nil {
 		return nil, err
 	}
-	cfg.NATSConfig.URL = shared.MessagingURL
-
-	if cfg.KubernetesConfig.Kubeconfig == "" {
-		cfg.KubernetesConfig.Kubeconfig = shared.Kubeconfig
-	}
-
 	return cfg, nil
 }

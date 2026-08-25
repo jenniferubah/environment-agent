@@ -28,8 +28,8 @@ var _ = Describe("PrepareConfig", func() {
 
 	It("derives pull secret name and default version matrix", func() {
 		cfg := &config.Config{
-			Registration: config.RegistrationConfig{ProviderName: "acm-cluster-sp"},
-			Cluster:      config.ClusterConfig{},
+			Config:  shared.Config{Name: "acm-cluster-sp"},
+			Cluster: config.ClusterConfig{},
 		}
 
 		Expect(app.PrepareConfig(cfg)).To(Succeed())
@@ -41,8 +41,8 @@ var _ = Describe("PrepareConfig", func() {
 var _ = Describe("New", func() {
 	It("returns error when PullSecretName is empty", func() {
 		cfg := &config.Config{
-			Registration: config.RegistrationConfig{ProviderName: "acm-cluster-sp"},
-			Cluster:      config.ClusterConfig{},
+			Config:  shared.Config{Name: "acm-cluster-sp"},
+			Cluster: config.ClusterConfig{},
 		}
 
 		_, err := app.New(context.Background(), cfg, nil, app.Options{})
@@ -51,7 +51,7 @@ var _ = Describe("New", func() {
 
 	It("uses injected Kubernetes client when monitor and registration are disabled", func() {
 		cfg := &config.Config{
-			Registration: config.RegistrationConfig{ProviderName: "acm-cluster-sp"},
+			Config: shared.Config{Name: "acm-cluster-sp"},
 			Cluster: config.ClusterConfig{
 				ClusterNamespace: "clusters",
 				PullSecret:       "eyJhdXRocyI6eyJjbG91ZC5vcGVuc2hpZnQuY29tIjp7ImF1dGgiOiJkR1Z6ZEE9PSJ9fX0=",
@@ -75,12 +75,11 @@ var _ = Describe("New", func() {
 
 	It("requires RestConfig when Kubernetes client is injected and monitor is enabled", func() {
 		cfg := &config.Config{
-			Registration: config.RegistrationConfig{ProviderName: "acm-cluster-sp"},
+			Config: shared.Config{Name: "acm-cluster-sp", MessagingURL: "nats://127.0.0.1:4222"},
 			Cluster: config.ClusterConfig{
 				ClusterNamespace: "clusters",
 				PullSecret:       "eyJhdXRocyI6eyJjbG91ZC5vcGVuc2hpZnQuY29tIjp7ImF1dGgiOiJkR1Z6ZEE9PSJ9fX0=",
 			},
-			Monitoring: config.MonitoringConfig{NATSUrl: "nats://127.0.0.1:4222"},
 		}
 		Expect(app.PrepareConfig(cfg)).To(Succeed())
 
@@ -100,10 +99,10 @@ var _ = Describe("config.Load", func() {
 		GinkgoT().Setenv("SP_CLUSTER_NAMESPACE", "clusters")
 		GinkgoT().Setenv("SP_PULL_SECRET", "c2VjcmV0")
 
-		cfg, err := config.Load(shared.Config{MessagingURL: "nats://agent:4222"})
+		cfg, err := config.Load(shared.Agent{MessagingURL: "nats://agent:4222"})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(cfg.Monitoring.NATSUrl).To(Equal("nats://agent:4222"))
-		Expect(cfg.Registration.ProviderName).To(Equal("acm-cluster-sp"))
+		Expect(cfg.MessagingURL).To(Equal("nats://agent:4222"))
+		Expect(cfg.Name).To(Equal("acm-cluster-sp"))
 	})
 })
 

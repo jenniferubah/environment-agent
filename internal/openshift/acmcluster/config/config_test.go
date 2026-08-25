@@ -11,7 +11,6 @@ import (
 )
 
 var _ = Describe("Config", func() {
-	// All required env vars needed for a valid Load().
 	requiredVars := map[string]string{
 		"SP_CLUSTER_NAMESPACE": "clusters",
 		"SP_PULL_SECRET":       "eyJhdXRocyI6e319",
@@ -23,8 +22,8 @@ var _ = Describe("Config", func() {
 		}
 	}
 
-	sharedDefaults := func() shared.Config {
-		return shared.Config{MessagingURL: "nats://localhost:4222"}
+	agentDefaults := func() shared.Agent {
+		return shared.Agent{MessagingURL: "nats://localhost:4222"}
 	}
 
 	DescribeTable("required config missing causes fail-fast",
@@ -34,11 +33,10 @@ var _ = Describe("Config", func() {
 					GinkgoT().Setenv(k, v)
 				}
 			}
-			// Record original value for Ginkgo restore, then unset.
 			GinkgoT().Setenv(missingVar, "")
 			Expect(os.Unsetenv(missingVar)).To(Succeed())
 
-			_, err := config.Load(sharedDefaults())
+			_, err := config.Load(agentDefaults())
 			Expect(err).To(HaveOccurred(), "Load() should fail when %s is missing", missingVar)
 		},
 		Entry("SP_CLUSTER_NAMESPACE missing", "SP_CLUSTER_NAMESPACE"),
@@ -48,10 +46,10 @@ var _ = Describe("Config", func() {
 	It("applies defaults when optional vars are not set", func() {
 		setAllRequired()
 
-		cfg, err := config.Load(sharedDefaults())
+		cfg, err := config.Load(agentDefaults())
 		Expect(err).NotTo(HaveOccurred())
-		Expect(cfg.Monitoring.NATSUrl).To(Equal("nats://localhost:4222"))
-		Expect(cfg.Registration.ProviderName).To(Equal("acm-cluster-sp"))
+		Expect(cfg.MessagingURL).To(Equal("nats://localhost:4222"))
+		Expect(cfg.Name).To(Equal("acm-cluster-sp"))
 		Expect(cfg.Health.EnabledPlatforms).To(Equal([]string{"kubevirt", "baremetal"}))
 		Expect(cfg.Monitoring.DebounceInterval.String()).To(Equal("1s"))
 		Expect(cfg.Monitoring.ResyncInterval.String()).To(Equal("10m0s"))
@@ -62,7 +60,7 @@ var _ = Describe("Config", func() {
 	It("returns error when messaging URL is empty", func() {
 		setAllRequired()
 
-		cfg, err := config.Load(shared.Config{})
+		cfg, err := config.Load(shared.Agent{})
 		Expect(err).To(HaveOccurred())
 		Expect(cfg).To(BeNil())
 		Expect(err.Error()).To(ContainSubstring("messaging URL is required"))
@@ -71,23 +69,23 @@ var _ = Describe("Config", func() {
 	It("uses agent kubeconfig when SP_KUBECONFIG is unset", func() {
 		setAllRequired()
 
-		cfg, err := config.Load(shared.Config{
+		cfg, err := config.Load(shared.Agent{
 			MessagingURL: "nats://localhost:4222",
 			Kubeconfig:   "/etc/agent/kubeconfig",
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(cfg.Kubernetes.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
+		Expect(cfg.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
 	})
 
 	It("prefers SP_KUBECONFIG over agent kubeconfig", func() {
 		setAllRequired()
 		GinkgoT().Setenv("SP_KUBECONFIG", "/sp/kubeconfig")
 
-		cfg, err := config.Load(shared.Config{
+		cfg, err := config.Load(shared.Agent{
 			MessagingURL: "nats://localhost:4222",
 			Kubeconfig:   "/agent/kubeconfig",
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(cfg.Kubernetes.Kubeconfig).To(Equal("/sp/kubeconfig"))
+		Expect(cfg.Kubeconfig).To(Equal("/sp/kubeconfig"))
 	})
 })

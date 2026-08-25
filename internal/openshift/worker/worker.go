@@ -3,6 +3,7 @@ package worker
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 )
 
@@ -65,5 +66,46 @@ func Close(bg *Background, closers ...Closer) error {
 			err = closeErr
 		}
 	}
+	return err
+}
+
+// AppLifecycle runs one optional background task and closes registered resources.
+// Embedded SP apps share this pattern: monitor goroutine + NATS publisher cleanup.
+type AppLifecycle struct {
+	background Background
+	logger     *slog.Logger
+	closeOnce  sync.Once
+	closers    []Closer
+}
+
+// NewAppLifecycle constructs lifecycle helpers for an embedded SP app.
+func NewAppLifecycle(logger *slog.Logger) AppLifecycle {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return AppLifecycle{logger: logger}
+}
+
+// RegisterCloser adds a resource to close when the app shuts down (e.g. NATS publisher).
+func (l *AppLifecycle) RegisterCloser(c Closer) {
+	if c == nil {
+		return
+	}
+	l.closers = append(l.closers, c)
+}
+
+// Start launches run in a background goroutine. errLogMsg is logged if run returns an error.
+func (l *AppLifecycle) Start(ctx context.Context, run func(context.Context) error, errLogMsg string) {
+	l.background.Start(ctx, run, func(err error) {
+		l.logger.Error(errLogMsg, "error", err)
+	})
+}
+
+// Close stops the background task and closes registered resources. Safe to call multiple times.
+func (l *AppLifecycle) Close() error {
+	var err error
+	l.closeOnce.Do(func() {
+		err = Close(&l.background, l.closers...)
+	})
 	return err
 }

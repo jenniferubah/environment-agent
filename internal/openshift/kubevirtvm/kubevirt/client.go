@@ -58,8 +58,12 @@ func init() {
 }
 
 // NewClient creates a new KubeVirt client with a typed REST client for VM operations
-// and a dynamic client for informers
-func NewClient(cfg *config.KubernetesConfig) (*Client, error) {
+// and a dynamic client for informers.
+func NewClient(cfg *config.Config) (*Client, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required")
+	}
+
 	var restConfig *rest.Config
 	var err error
 

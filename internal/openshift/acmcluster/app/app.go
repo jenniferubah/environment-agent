@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/dcm-project/environment-agent/internal/openshift/acmcluster/cluster"
@@ -31,9 +30,7 @@ type App struct {
 	monitor        *monitoring.StatusMonitor
 	publisher      *monitoring.NATSPublisher
 	logger         *slog.Logger
-	background     worker.Background
-
-	closeOnce sync.Once
+	lifecycle      worker.AppLifecycle
 }
 
 // PrepareConfig loads derived configuration values that are not set directly
@@ -48,8 +45,8 @@ func PrepareConfig(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("loading compatibility matrix: %w", err)
 	}
-	cfg.Cluster.VersionMatrix = map[string]string(matrix)
-	cfg.Cluster.PullSecretName = cfg.Registration.ProviderName + "-pull-secret"
+	cfg.Cluster.VersionMatrix = matrix
+	cfg.Cluster.PullSecretName = cfg.Name + "-pull-secret"
 	return nil
 }
 
@@ -67,7 +64,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, opts Opti
 		return nil, fmt.Errorf("cluster pull secret name is empty")
 	}
 
-	restCfg, k8sClient, err := resolveKubernetesClients(cfg.Kubernetes.Kubeconfig, opts)
+	restCfg, k8sClient, err := resolveKubernetesClients(cfg.Kubeconfig, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +78,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, opts Opti
 		clusterService: dispatcher.New(k8sClient, cfg.Cluster, cfg.Health.EnabledPlatforms),
 		healthChecker:  health.NewChecker(k8sClient, cfg.Health, opts.version(), time.Now()),
 		logger:         logger,
+		lifecycle:      worker.NewAppLifecycle(logger),
 	}
 
 	if err := a.initMonitor(restCfg, opts); err != nil {
@@ -135,18 +133,19 @@ func (a *App) initMonitor(restCfg *rest.Config, opts Options) error {
 	}
 
 	publisher, err := monitoring.NewNATSPublisher(
-		a.cfg.Monitoring.NATSUrl,
-		a.cfg.Registration.ProviderName,
+		a.cfg.MessagingURL,
+		a.cfg.Name,
 		a.logger,
 	)
 	if err != nil {
 		return fmt.Errorf("creating NATS publisher: %w", err)
 	}
 	a.publisher = publisher
+	a.lifecycle.RegisterCloser(publisher)
 
 	monitorCfg := monitoring.MonitorConfig{
 		Namespace:            a.cfg.Cluster.ClusterNamespace,
-		ProviderName:         a.cfg.Registration.ProviderName,
+		ProviderName:         a.cfg.Name,
 		DebounceInterval:     a.cfg.Monitoring.DebounceInterval,
 		ResyncInterval:       a.cfg.Monitoring.ResyncInterval,
 		PublishRetryMax:      a.cfg.Monitoring.PublishRetryMax,
@@ -173,26 +172,16 @@ func (a *App) HealthChecker() service.HealthChecker {
 
 // Start launches background workers (status monitor). It is non-blocking.
 func (a *App) Start(ctx context.Context) {
-	a.background.Start(ctx, func(taskCtx context.Context) error {
+	a.lifecycle.Start(ctx, func(taskCtx context.Context) error {
 		if a.monitor == nil {
 			return nil
 		}
 		return a.monitor.Start(taskCtx)
-	}, func(err error) {
-		a.logger.Error("status monitor failed", "error", err)
-	})
+	}, "status monitor failed")
 }
 
 // Close stops the status monitor and releases resources such as the NATS connection.
 // It is safe to call multiple times.
 func (a *App) Close() error {
-	var err error
-	a.closeOnce.Do(func() {
-		var closers []worker.Closer
-		if a.publisher != nil {
-			closers = append(closers, a.publisher)
-		}
-		err = worker.Close(&a.background, closers...)
-	})
-	return err
+	return a.lifecycle.Close()
 }
