@@ -406,9 +406,9 @@ to the control-plane's response consumer.
 
 ### DD-250: Embedded SP operation handlers deferred (v1alpha1)
 
-**Decision:** Embedded SPs register correctly (REQ-SPR-010–050) and are health-monitored, but no embedded SP ever actually serves a create/delete operation in v1alpha1 — `routing.NewForwarder` is constructed with no `Embedded` field (`cmd/environment-agent/main.go`), so `Forwarder.embedded` is always empty and any operation routed to an embedded SP fails with a 503. No concrete `routing.EmbeddedHandler` implementation exists anywhere except a test fake.
+**Decision:** Embedded SPs register correctly (REQ-SPR-010–050) and are health-monitored. The forwarder supports in-process CREATE/DELETE via `routing.EmbeddedHandler`, but **no production embedded SP has a real handler yet** — routing to configured embedded types fails with 503. Generic integration tests continue to use a test fake.
 
-**Rationale:** A full requirements-coverage audit confirmed this is not a wiring bug but a genuinely unbuilt feature — the interface and `EMBEDDED_SPS` config exist as scaffolding for a future capability. The agent is fully functional today via external SPs, which is the only registration path actually exercised in practice. Building real embedded-SP operational logic (e.g. an in-process container/cluster/kubevirt handler) is a substantial feature, not a bug fix, and is out of scope for this hardening pass.
+**Rationale:** A full requirements-coverage audit (2026-08-07) found embedded operational logic was unbuilt scaffolding. Domain code for OpenShift SPs is vendored in-repo (see DD-490) ahead of a follow-up PR that wires embedded handlers.
 
 **Related requirements:** REQ-RTE-030, REQ-SPR-040, REQ-SPR-050, REQ-RCM-230
 
@@ -416,7 +416,7 @@ to the control-plane's response consumer.
 
 **Decision:** `REQ-DCM-030`'s `resources_available` field is permanently omitted from DCM registration/heartbeat payloads — `main.go` passes a literal `nil` `resourceProvider` to `dcm.NewRegistrar`. The registrar's conditional logic correctly omits the field when the provider is nil; there is simply no implementation anywhere that computes real resource capacity to plug into that provider interface.
 
-**Rationale:** Confirmed by the 2026-08-07 audit. No embedded SP or subsystem in v1alpha1 currently has a well-defined notion of "resource capacity" to report (this only becomes meaningful once real embedded SP operational logic exists — see DD-250). Defining that data source now, without a concrete consumer, would be speculative. Deferred until a real capacity source exists.
+**Rationale:** Confirmed by the 2026-08-07 audit. No embedded SP or subsystem in v1alpha1 currently has a well-defined notion of "resource capacity" to report (this only becomes meaningful once additional embedded SP operational logic exists beyond cluster — see DD-250, DD-490). Defining that data source now, without a concrete consumer, would be speculative. Deferred until a real capacity source exists.
 
 **Related requirements:** REQ-DCM-030
 
@@ -903,3 +903,25 @@ messages — cancel-subject had no equivalent bound, despite `HandleCancel` call
 shorter default (10s).
 
 **Related requirements:** REQ-RCM-180
+
+### DD-490: OpenShift SP domain code in-repo (embedding deferred)
+
+**Decision:** OpenShift service-provider domain code is vendored in-repo under
+`internal/openshift/*` (`acmcluster`, `container`, `kubevirtvm`). Public OpenAPI types use
+generic capability paths: `api/cluster/v1alpha1`, `api/container/v1alpha1`,
+`api/vm/v1alpha1` — not SP-specific names like `acmcluster` or nested under `openshift/`.
+SP-local oapi-codegen server stubs stay under each domain package (e.g.
+`internal/openshift/container/oapi/server`). No external Go module dependency on standalone SP
+repos at link time for the agent binary.
+
+**Embedding (deferred):** Wiring embedded SPs (`internal/embedded/*`, forwarder handlers,
+`SetEmbeddedCheckers`, ACM runtime startup in `main.go`) is intentionally **not** in this PR.
+A follow-up PR will add `internal/embedded/cluster` (and container/vm) glue when
+`AGENT_EMBEDDED_SPS` is enabled.
+
+**Rationale:** In-repo domain code removes the module replace/publish cycle and prepares a
+future single binary with multiple embedded SPs without coupling the vendoring PR to runtime
+wiring.
+
+**Related requirements:** REQ-SPR-010, REQ-SPR-030, REQ-SPR-040, REQ-HMN-020, REQ-RTE-030,
+REQ-RTE-210

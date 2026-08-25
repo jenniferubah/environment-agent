@@ -1,0 +1,693 @@
+openapi: 3.0.4
+info:
+  title: Kubernetes Container Service Provider API
+  description: |
+    DCM service provider for managing containers in Kubernetes clusters.
+    This API follows AEP standards for consistency across DCM services.
+  version: 1.1.0
+  contact:
+    name: DCM Project
+    url: https://github.com/dcm-project/k8s-container-service-provider
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: /
+    description: K8s Container Service Provider
+
+tags:
+  - name: Health
+    description: Health check operations
+  - name: Containers
+    description: Container lifecycle management operations
+
+paths:
+  /api/v1alpha1/containers/health:
+    get:
+      summary: Health Check
+      description: Returns the health status of the service
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/v1alpha1/containers:
+    get:
+      summary: List Containers
+      description: Retrieve a list of containers with pagination support
+      operationId: listContainers
+      tags:
+        - Containers
+      parameters:
+        - name: max_page_size
+          in: query
+          description: Maximum number of resources to return in a single page
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 1000
+            default: 50
+        - name: page_token
+          in: query
+          description: Token indicating the starting point for the page
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved containers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContainerList'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create Container
+      description: Create a new container instance
+      operationId: createContainer
+      tags:
+        - Containers
+      parameters:
+        - name: id
+          in: query
+          description: |
+            Optional client-specified ID for the container. If not provided,
+            the server will generate an ID.
+
+            Requirements (per AEP-122):
+            - 1-63 characters long
+            - Start with a lowercase letter or digit
+            - Contain only lowercase letters, numbers, and hyphens
+            - End with letter or number
+          required: false
+          schema:
+            type: string
+            pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+            minLength: 1
+            maxLength: 63
+          example: my-nginx-container
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Container'
+      responses:
+        '201':
+          description: Container created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - Deployment with same name already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1alpha1/containers/{container_id}:
+    get:
+      summary: Get Container
+      description: Retrieve a specific container instance by ID
+      operationId: getContainer
+      tags:
+        - Containers
+      parameters:
+        - $ref: '#/components/parameters/ContainerIdPath'
+      responses:
+        '200':
+          description: Container retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Container not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete Container
+      description: Delete a specific container instance
+      operationId: deleteContainer
+      tags:
+        - Containers
+      parameters:
+        - $ref: '#/components/parameters/ContainerIdPath'
+      responses:
+        '204':
+          description: Container deleted successfully
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Container not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  parameters:
+    ContainerIdPath:
+      name: container_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+      description: Unique identifier for the container
+      example: my-nginx-container
+
+  schemas:
+    Health:
+      type: object
+      description: Health status singleton resource
+      x-aep-resource:
+        singular: health
+        plural: healths
+        singleton: true
+        type: k8s-container-service-provider.dcm.io/health
+        patterns:
+          - health
+      required:
+        - type
+        - status
+        - path
+        - version
+        - uptime
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          readOnly: true
+          description: Resource type identifier
+          example: "k8s-container-service-provider.dcm.io/health"
+        status:
+          type: string
+          description: Health status
+          example: "healthy"
+        path:
+          type: string
+          readOnly: true
+          description: Canonical path of the resource
+          example: "health"
+        version:
+          type: string
+          readOnly: true
+          description: Service provider build version
+          example: "1.0.0"
+        uptime:
+          type: integer
+          readOnly: true
+          description: Seconds since the service provider started
+          example: 3600
+
+    ContainerStatus:
+      type: string
+      enum:
+        - PENDING
+        - RUNNING
+        - FAILED
+        - UNKNOWN
+        - DELETED
+      description: Current status of the container instance
+
+    ContainerImage:
+      type: object
+      description: Container image specification
+      additionalProperties: true
+      required:
+        - reference
+      properties:
+        reference:
+          type: string
+          description: |
+            Complete OCI image reference.
+            Format: [REGISTRY/]REPOSITORY[:TAG|@DIGEST]
+          example: "quay.io/myapp:v1.2"
+
+    ContainerCpu:
+      type: object
+      description: CPU resource constraints
+      additionalProperties: true
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: integer
+          description: Minimum guaranteed CPU cores
+          minimum: 1
+        max:
+          type: integer
+          description: Maximum allowed CPU cores
+          minimum: 1
+
+    ContainerMemory:
+      type: object
+      description: Memory resource constraints
+      additionalProperties: true
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: string
+          description: Minimum guaranteed memory with unit (e.g., "1GB", "2GB")
+          pattern: '^[0-9]+(MB|GB|TB)$'
+        max:
+          type: string
+          description: Maximum allowed memory with unit (e.g., "2GB", "4GB")
+          pattern: '^[0-9]+(MB|GB|TB)$'
+
+    ContainerResources:
+      type: object
+      description: CPU and memory resource constraints
+      additionalProperties: true
+      required:
+        - cpu
+        - memory
+      properties:
+        cpu:
+          $ref: '#/components/schemas/ContainerCpu'
+        memory:
+          $ref: '#/components/schemas/ContainerMemory'
+
+    ContainerEnvVar:
+      type: object
+      description: Environment variable definition
+      additionalProperties: true
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          description: Environment variable name
+        value:
+          type: string
+          description: Environment variable value
+
+    ContainerProcess:
+      type: object
+      description: Container process configuration
+      additionalProperties: true
+      properties:
+        command:
+          type: array
+          description: Entrypoint override
+          items:
+            type: string
+        args:
+          type: array
+          description: Arguments to the entrypoint
+          items:
+            type: string
+        env:
+          type: array
+          description: Environment variables
+          items:
+            $ref: '#/components/schemas/ContainerEnvVar'
+
+    ContainerPort:
+      type: object
+      description: Container port definition
+      additionalProperties: true
+      required:
+        - container_port
+        - visibility
+      properties:
+        container_port:
+          type: integer
+          description: Port number inside container
+          minimum: 1
+          maximum: 65535
+        visibility:
+          type: string
+          description: |
+            How this port is exposed to consumers.
+            - none: Port is not exposed outside the container process
+            - internal: Exposed to the host or cluster network
+              (e.g., Docker -p, Kubernetes ClusterIP Service)
+            - external: Reachable from outside the host/cluster
+              (e.g., OpenShift Route, Kubernetes Ingress/LoadBalancer)
+          enum:
+            - none
+            - internal
+            - external
+          example: internal
+
+    ContainerNetwork:
+      type: object
+      description: Network configuration
+      additionalProperties: true
+      properties:
+        ip:
+          type: string
+          readOnly: true
+          description: Pod IP address
+        ports:
+          type: array
+          description: Container ports to expose
+          items:
+            $ref: '#/components/schemas/ContainerPort'
+
+    ContainerMetadata:
+      type: object
+      description: Resource metadata for identification
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Resource name identifier
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          minLength: 1
+          maxLength: 63
+        labels:
+          type: object
+          description: Custom key-value pairs for tagging and filtering
+          additionalProperties:
+            type: string
+        namespace:
+          type: string
+          readOnly: true
+          description: Kubernetes namespace where resources were created
+
+    Container:
+      type: object
+      description: Container resource representing a container instance
+      x-aep-resource:
+        type: k8s-container-service-provider.dcm.io/container
+        singular: container
+        plural: containers
+        patterns:
+          - containers/{container_id}
+      required:
+        - spec
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Unique identifier for the container instance
+          pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+          minLength: 1
+          maxLength: 63
+          example: my-nginx-container
+        path:
+          type: string
+          readOnly: true
+          description: Resource path identifier
+          example: "containers/my-nginx-container"
+        spec:
+          $ref: '#/components/schemas/ContainerSpec'
+        status:
+          readOnly: true
+          allOf:
+            - $ref: '#/components/schemas/ContainerStatus'
+        service:
+          readOnly: true
+          allOf:
+            - $ref: '#/components/schemas/ServiceInfo'
+        create_time:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the container was created
+        update_time:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the container was last updated
+
+    ContainerSpec:
+      type: object
+      description: Container specification with input fields for creating a container
+      required:
+        - service_type
+        - metadata
+        - image
+        - resources
+      properties:
+        service_type:
+          type: string
+          description: Service type identifier (must be "container")
+          enum: [container]
+        metadata:
+          $ref: '#/components/schemas/ContainerMetadata'
+        image:
+          $ref: '#/components/schemas/ContainerImage'
+        resources:
+          $ref: '#/components/schemas/ContainerResources'
+        process:
+          $ref: '#/components/schemas/ContainerProcess'
+        network:
+          $ref: '#/components/schemas/ContainerNetwork'
+        provider_hints:
+          type: object
+          description: Optional provider-specific hints from the catalog (accepted, not acted upon)
+          additionalProperties: true
+
+    ServicePort:
+      type: object
+      description: Service port details
+      required:
+        - port
+        - target_port
+      properties:
+        port:
+          type: integer
+          description: Service port number
+        target_port:
+          type: integer
+          description: Target container port
+        protocol:
+          type: string
+          description: Protocol (TCP, UDP)
+          default: TCP
+
+    ServiceInfo:
+      type: object
+      description: Kubernetes Service details
+      properties:
+        name:
+          type: string
+          readOnly: true
+          description: Name of the Kubernetes Service
+        cluster_ip:
+          type: string
+          description: Cluster-internal IP address
+        type:
+          type: string
+          description: Service type
+          enum: [ClusterIP, NodePort, LoadBalancer]
+        external_ip:
+          type: string
+          description: External IP address (for LoadBalancer type)
+        ports:
+          type: array
+          description: Service ports
+          items:
+            $ref: '#/components/schemas/ServicePort'
+
+    ContainerList:
+      type: object
+      description: Paginated list of container instances
+      properties:
+        containers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Container'
+        next_page_token:
+          type: string
+          description: Token for retrieving the next page of results
+
+    Error:
+      type: object
+      description: |
+        RFC 9457 compliant error response (Problem Details for HTTP APIs).
+
+        Defined problem types:
+        | Type URI | Title | HTTP Status |
+        |----------|-------|-------------|
+        | .../problems/invalid-argument | Invalid argument | 400 |
+        | .../problems/not-found | Not found | 404 |
+        | .../problems/already-exists | Already exists | 409 |
+        | .../problems/permission-denied | Permission denied | 403 |
+        | .../problems/unauthenticated | Unauthenticated | 401 |
+        | .../problems/internal | Internal Server Error | 500 |
+        | .../problems/unavailable | Service unavailable | 503 |
+      externalDocs:
+        description: "RFC 9457: Problem Details for HTTP APIs"
+        url: https://datatracker.ietf.org/doc/html/rfc9457
+      required:
+        - type
+        - title
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: URI reference identifying the error type
+          enum:
+            - https://dcm-project.github.io/problems/invalid-argument
+            - https://dcm-project.github.io/problems/not-found
+            - https://dcm-project.github.io/problems/already-exists
+            - https://dcm-project.github.io/problems/permission-denied
+            - https://dcm-project.github.io/problems/unauthenticated
+            - https://dcm-project.github.io/problems/internal
+            - https://dcm-project.github.io/problems/unavailable
+          x-enum-varnames:
+            - INVALIDARGUMENT
+            - NOTFOUND
+            - ALREADYEXISTS
+            - PERMISSIONDENIED
+            - UNAUTHENTICATED
+            - INTERNAL
+            - UNAVAILABLE
+        title:
+          type: string
+          description: Short human-readable summary
+        status:
+          type: integer
+          format: int32
+          description: HTTP status code
+          minimum: 100
+          maximum: 599
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence
+        instance:
+          type: string
+          format: uri-reference
+          description: URI reference for this specific error occurrence
+        pointer:
+          type: string
+          format: json-pointer
+          description: >
+            JSON Pointer fragment identifier (RFC 6901 §6) locating the request
+            body field that caused this error, e.g. "#/spec/resources/cpu/min".
+            Absent when the error cannot be attributed to a single request body
+            field or is not a validation error.
+        errors:
+          type: array
+          description: |
+            Present only when two or more same-type validation errors occur.
+            Each entry describes one validation failure. Never empty, never
+            single-entry. Top-level detail equals the first entry for backward
+            compatibility.
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      description: Individual validation error within a multi-error response
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable explanation of this specific validation error
+        pointer:
+          type: string
+          format: json-pointer
+          description: >
+            JSON Pointer fragment identifier (RFC 6901 §6) locating the request
+            body field that caused this error, e.g. "#/spec/resources/cpu/min".
+            Absent when the error cannot be attributed to a single request body
+            field.
+

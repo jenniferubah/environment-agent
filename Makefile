@@ -86,10 +86,78 @@ generate-client:
 		-o pkg/client/client.gen.go \
 		api/v1alpha1/openapi.yaml
 
-generate-api: generate-types generate-spec generate-server generate-client
+# Embedded SP OpenAPI contracts (generic capability paths, not SP package names).
+generate-cluster-types:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=api/cluster/v1alpha1/types.gen.cfg \
+		-o api/cluster/v1alpha1/types.gen.go \
+		api/cluster/v1alpha1/openapi.yaml
+
+generate-cluster-spec:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=api/cluster/v1alpha1/spec.gen.cfg \
+		-o api/cluster/v1alpha1/spec.gen.go \
+		api/cluster/v1alpha1/openapi.yaml
+
+generate-cluster-api: generate-cluster-types generate-cluster-spec
+
+generate-container-types:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=api/container/v1alpha1/types.gen.cfg \
+		-o api/container/v1alpha1/types.gen.go \
+		api/container/v1alpha1/openapi.yaml
+
+generate-container-spec:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=api/container/v1alpha1/spec.gen.cfg \
+		-o api/container/v1alpha1/spec.gen.go \
+		api/container/v1alpha1/openapi.yaml
+
+generate-container-server:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=internal/openshift/container/oapi/server/server.gen.cfg \
+		-o internal/openshift/container/oapi/server/server.gen.go \
+		api/container/v1alpha1/openapi.yaml
+
+generate-container-api: generate-container-types generate-container-spec generate-container-server
+
+bundle-vm-openapi:
+	@echo "Bundling VM OpenAPI specification..."
+	@command -v redocly >/dev/null 2>&1 || { \
+		echo "Error: Redocly CLI is required but not installed."; \
+		echo "Install it with: npm install -g @redocly/cli"; \
+		exit 1; \
+	}
+	redocly bundle api/vm/v1alpha1/openapi.source.yaml -o api/vm/v1alpha1/openapi.yaml
+	@echo "VM OpenAPI spec bundled successfully"
+
+generate-vm-types:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=api/vm/v1alpha1/types.gen.cfg \
+		-o api/vm/v1alpha1/types.gen.go \
+		api/vm/v1alpha1/openapi.yaml
+
+generate-vm-spec:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=api/vm/v1alpha1/spec.gen.cfg \
+		-o api/vm/v1alpha1/spec.gen.go \
+		api/vm/v1alpha1/openapi.yaml
+
+generate-vm-server:
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+		--config=internal/openshift/kubevirtvm/oapi/server/server.gen.cfg \
+		-o internal/openshift/kubevirtvm/oapi/server/server.gen.go \
+		api/vm/v1alpha1/openapi.yaml
+
+generate-vm-api: generate-vm-types generate-vm-spec generate-vm-server
+
+generate-sp-api: generate-cluster-api generate-container-api generate-vm-api
+
+generate-api: generate-types generate-spec generate-server generate-client generate-sp-api
 
 check-generate-api: generate-api
-	git diff --exit-code api/ internal/api/server/ pkg/client/ || \
+	git diff --exit-code api/ internal/api/server/ pkg/client/ \
+		internal/openshift/container/oapi/server/ internal/openshift/kubevirtvm/oapi/server/ || \
 		(echo "Generated files out of sync. Run 'make generate-api'." && exit 1)
 
 check-aep:
@@ -104,4 +172,9 @@ check-container-engine:
 image-build: check-container-engine
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG) .
 
-.PHONY: build run clean fmt vet lint test test-unit test-integration test-race test-e2e test-all coverage ci tidy check-tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep check-container-engine image-build
+.PHONY: build run clean fmt vet lint test test-unit test-integration test-race test-e2e test-all coverage ci tidy check-tidy \
+	generate-types generate-spec generate-server generate-client \
+	generate-cluster-types generate-cluster-spec generate-cluster-api \
+	generate-container-types generate-container-spec generate-container-server generate-container-api \
+	bundle-vm-openapi generate-vm-types generate-vm-spec generate-vm-server generate-vm-api \
+	generate-sp-api generate-api check-generate-api check-aep check-container-engine image-build

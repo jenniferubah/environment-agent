@@ -1,0 +1,527 @@
+openapi: 3.0.4
+info:
+  contact: {}
+  description: KubeVirt Service Provider API
+  title: KubeVirt Service Provider API
+  version: v1alpha1
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: /api/v1alpha1
+tags:
+  - name: vm
+    description: Virtual Machine resource management
+  - name: health
+    description: Health check operations
+paths:
+  /vms/health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      operationId: getHealth
+      description: Health check for KubeVirt Service Provider API
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /vms:
+    get:
+      tags:
+        - vm
+      summary: List all VMs
+      operationId: listVMs
+      description: Returns a list of virtual machines
+      parameters:
+        - name: max_page_size
+          in: query
+          description: Maximum number of results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: page_token
+          in: query
+          description: Token for pagination
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VMList'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - vm
+      summary: Create a VM
+      operationId: createVM
+      description: |
+        Create a new virtual machine.
+        The VM will be provisioned on the KubeVirt cluster.
+      parameters:
+        - name: id
+          in: query
+          description: Optional VM ID for idempotent creation
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VM'
+      responses:
+        '201':
+          description: VM created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VM'
+        '400':
+          description: Invalid input
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - VM with this name already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation exception
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /vms/{vmId}:
+    get:
+      tags:
+        - vm
+      summary: Get a VM
+      operationId: getVM
+      description: Get a virtual machine by its unique ID
+      parameters:
+        - name: vmId
+          in: path
+          required: true
+          description: Unique identifier of the VM
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VM'
+        '400':
+          description: Invalid ID supplied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: VM not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - vm
+      summary: Delete a VM
+      operationId: deleteVM
+      description: Delete a virtual machine from the cluster
+      parameters:
+        - name: vmId
+          in: path
+          required: true
+          description: Unique identifier of the VM to delete
+          schema:
+            type: string
+      responses:
+        '204':
+          description: VM deleted successfully
+        '400':
+          description: Invalid ID supplied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: VM not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: Unexpected error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    Health:
+      type: object
+      description: Health status singleton resource
+      x-aep-resource:
+        singular: health
+        plural: healths
+        singleton: true
+        type: serviceprovider.dcm.io/health
+        patterns:
+          - health
+      properties:
+        status:
+          type: string
+          description: Health status
+          example: ok
+        path:
+          type: string
+          description: Canonical path of the resource
+          example: ok
+          readOnly: true
+    VM:
+      description: Virtual Machine
+      x-aep-resource:
+        type: serviceprovider.dcm.io/vm
+        singular: vm
+        plural: vms
+        patterns:
+          - vms/{vm_id}
+      required:
+        - spec
+      properties:
+        path:
+          type: string
+          readOnly: true
+          description: Resource path identifier
+          example: vms/123e4567-e89b-12d3-a456-426614174000
+        spec:
+          $ref: '#/components/schemas/VMSpec'
+    VMList:
+      type: object
+      description: Paginated list of VMs
+      properties:
+        vms:
+          type: array
+          items:
+            $ref: '#/components/schemas/VM'
+        next_page_token:
+          type: string
+          description: Token for retrieving the next page of results
+          example: eyJpZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjYxNDE3NDAwMCJ9
+    Error:
+      type: object
+      description: RFC 7807 compliant error response
+      required:
+        - type
+        - title
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: URI reference identifying the error type
+          example: https://dcm.example.com/errors/invalid-input
+        title:
+          type: string
+          description: Short human-readable summary of the problem
+          example: Invalid Input
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence
+          example: The 'name' field is required but was not provided
+        instance:
+          type: string
+          format: uri-reference
+          description: URI reference for this specific error occurrence
+          example: /errors/123e4567-e89b-12d3-a456-426614174000
+    ServiceType:
+      type: string
+      description: |
+        Service type identifier.
+        Makes the payload self-describing and enables routing/validation.
+      enum:
+        - vm
+        - container
+        - database
+        - cluster
+        - three-tier-app-demo
+      example: vm
+    ServiceMetadata:
+      type: object
+      description: |
+        Resource metadata for identification and governance.
+        Used by all service type specifications.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: |
+            Resource name identifier.
+            Must be unique within the namespace.
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          minLength: 1
+          maxLength: 63
+          example: my-dev-vm
+        labels:
+          type: object
+          description: |
+            Key-value pairs for tagging and filtering.
+            Both keys and values must be strings.
+          additionalProperties:
+            type: string
+          example:
+            environment: production
+            owner: platform-team
+    ProviderHints:
+      type: object
+      description: |
+        Optional provider-specific configuration.
+
+        Allows platform-specific settings without breaking portability.
+        Providers use hints they recognize and ignore unknown hints.
+
+        Keys are provider identifiers (e.g., kubevirt, vmware, aws).
+        Values are provider-specific configuration objects.
+      additionalProperties:
+        type: object
+        additionalProperties: true
+      example:
+        kubevirt:
+          instanceType: u1.large
+        vmware:
+          vmxVersion: '17'
+        aws:
+          instanceType: t3.xlarge
+    CommonFields:
+      type: object
+      description: |
+        Common fields included in all service type specifications.
+        These provide versioning, extensibility, and provider-specific configuration.
+      required:
+        - service_type
+        - metadata
+      properties:
+        id:
+          type: string
+          description: |
+            Unique identifier for the resource.
+          pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+          readOnly: true
+          example: vm-abc123
+        status:
+          type: string
+          description: |
+            Current status of the resource.
+          readOnly: true
+          example: running
+        status_message:
+          type: string
+          description: Human-readable message providing details about the current status
+          readOnly: true
+          example: Resource is running normally
+        path:
+          type: string
+          description: |
+            Resource path or location within the system hierarchy.
+          readOnly: true
+          example: /production/us-east/compute
+        create_time:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the resource was created (RFC 3339)
+          example: '2026-01-13T10:30:00Z'
+        update_time:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp when the resource was last updated (RFC 3339)
+          example: '2026-01-13T15:45:30Z'
+        service_type:
+          $ref: '#/components/schemas/ServiceType'
+        metadata:
+          $ref: '#/components/schemas/ServiceMetadata'
+        provider_hints:
+          $ref: '#/components/schemas/ProviderHints'
+    Vcpu:
+      type: object
+      description: Virtual CPU configuration
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          description: |
+            Number of virtual CPUs.
+            Maps to vCPU count in all providers.
+          minimum: 1
+          example: 4
+      additionalProperties: true
+    Memory:
+      type: object
+      description: Memory configuration (RAM)
+      required:
+        - size
+      properties:
+        size:
+          type: string
+          description: |
+            Memory size with unit suffix (MB, GB, TB).
+            Maps to guest memory in all providers.
+          pattern: ^[0-9]+(MB|GB|TB)$
+          example: 16GB
+      additionalProperties: true
+    Disk:
+      type: object
+      description: Virtual disk specification
+      required:
+        - name
+        - capacity
+      properties:
+        name:
+          type: string
+          description: |
+            Disk identifier (unique within VM).
+            The root volume must be named "boot".
+            Additional disks can use names like "data", "log", etc.
+          pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+          example: boot
+        capacity:
+          type: string
+          description: Disk capacity with unit suffix (MB, GB, TB)
+          pattern: ^[0-9]+(MB|GB|TB)$
+          example: 100GB
+      additionalProperties: true
+    Storage:
+      type: object
+      description: Storage configuration
+      required:
+        - disks
+      properties:
+        disks:
+          type: array
+          description: |
+            Virtual disk specifications.
+
+            Requirements:
+            - Must contain at least one disk named "boot" for the root volume
+            - Disk names must be unique within the VM
+
+            Note: The boot disk requirement is enforced at application level.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Disk'
+      additionalProperties: true
+    GuestOS:
+      type: object
+      description: |
+        Guest operating system configuration.
+        Providers map the OS type to their image catalog.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: |
+            Operating system identifier.
+
+            Naming convention: <distro>-<version>
+            Examples:
+            - Linux: rhel-9, ubuntu-22.04, fedora-39, centos-stream-9
+            - Windows: windows-server-2022, windows-11
+
+            Providers map this to their image catalog:
+            - KubeVirt: Container image or DataVolume
+            - VMware: VM template or content library item
+            - AWS: AMI ID
+            - Azure: Image reference
+          example: rhel-9
+      additionalProperties: true
+    Access:
+      type: object
+      description: VM access configuration
+      properties:
+        ssh_public_key:
+          type: string
+          description: |
+            SSH public key for VM access.
+            Injected via cloud-init/cloudbase-init by providers.
+
+            Provider mapping:
+            - KubeVirt: cloud-init userData
+            - AWS: key pair
+            - Azure: SSH public key
+            - GCP: instance metadata
+            - VMware: guest customization
+          example: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample...
+      additionalProperties: true
+    VMSpec:
+      type: object
+      description: |
+        Provider-agnostic virtual machine specification.
+
+        Includes common fields (service_type, metadata, provider_hints)
+        plus VM-specific fields for compute, storage, and operating system.
+
+        Providers translate this abstract specification to their native format.
+      allOf:
+        - $ref: '#/components/schemas/CommonFields'
+        - type: object
+          required:
+            - vcpu
+            - memory
+            - storage
+            - guest_os
+          properties:
+            vcpu:
+              $ref: '#/components/schemas/Vcpu'
+            memory:
+              $ref: '#/components/schemas/Memory'
+            storage:
+              $ref: '#/components/schemas/Storage'
+            guest_os:
+              $ref: '#/components/schemas/GuestOS'
+            access:
+              $ref: '#/components/schemas/Access'
+          additionalProperties: true

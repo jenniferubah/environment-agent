@@ -1,0 +1,82 @@
+package v1alpha1
+
+import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/oapi/server"
+)
+
+var _ = Describe("Converters", func() {
+	Describe("vmSpecToServerVM", func() {
+		It("should return error for nil input", func() {
+			result, err := vmSpecToServerVM(nil, nil)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("vmSpec is nil"))
+			Expect(result).To(BeNil())
+		})
+
+		It("should set path and UUID on the result", func() {
+			vmSpec := newTestVMSpec()
+			vmID := "00000000-0000-0000-0000-000000000001"
+			path := "/api/v1alpha1/vms/" + vmID
+
+			result, err := vmSpecToServerVM(vmSpec, &path)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(*result.Path).To(Equal(path))
+		})
+
+		It("should handle invalid UUID gracefully", func() {
+			vmSpec := newTestVMSpec()
+			path := "/api/v1alpha1/vms/not-a-uuid"
+
+			result, err := vmSpecToServerVM(vmSpec, &path)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(*result.Path).To(Equal(path))
+			// UUID stays zero when parse fails
+		})
+
+		It("should handle nil path", func() {
+			vmSpec := newTestVMSpec()
+
+			result, err := vmSpecToServerVM(vmSpec, nil)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(result.Path).To(BeNil())
+		})
+	})
+
+	Describe("createVMRequestToVMSpec", func() {
+		It("should return error for nil input", func() {
+			result, err := createVMRequestToVMSpec(nil)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("createVM request body is nil"))
+			Expect(result).To(BeNil())
+		})
+
+		It("should return a non-nil VMSpec for valid input", func() {
+			body := &server.CreateVMJSONRequestBody{
+				Spec: server.VMSpec{
+					ServiceType: server.Vm,
+					Metadata:    server.ServiceMetadata{Name: "test-vm"},
+					GuestOs:     server.GuestOS{Type: "ubuntu"},
+					Vcpu:        server.Vcpu{Count: 2},
+					Memory:      server.Memory{Size: "2Gi"},
+					Storage:     server.Storage{Disks: []server.Disk{{Name: "boot", Capacity: "10Gi"}}},
+				},
+			}
+
+			result, err := createVMRequestToVMSpec(body)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+		})
+	})
+})
