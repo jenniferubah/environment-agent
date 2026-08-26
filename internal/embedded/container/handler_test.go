@@ -107,6 +107,42 @@ var _ = Describe("Handler", func() {
 		Expect(repo.lastSpec.Metadata.Name).To(Equal("my-container"))
 	})
 
+	It("rejects an empty wrapped spec", func() {
+		spec, err := json.Marshal(containerapi.Container{})
+		Expect(err).NotTo(HaveOccurred())
+
+		err = handler.CreateResource(context.Background(), routing.CreateResourceRequest{
+			ResourceID:  "container-3",
+			ServiceType: container.ServiceType,
+			Spec:        spec,
+			EventID:     "ce-3",
+		})
+		Expect(err).To(BeAssignableToTypeOf(&routing.SPResponseError{}))
+		spErr := err.(*routing.SPResponseError)
+		Expect(spErr.StatusCode).To(Equal(http.StatusBadRequest))
+		Expect(repo.lastID).To(BeEmpty())
+	})
+
+	It("rejects reserved DCM labels before create", func() {
+		badSpec := validContainerSpec()
+		labels := map[string]string{"dcm.project/managed-by": "user"}
+		badSpec.Metadata.Labels = &labels
+		spec, err := json.Marshal(badSpec)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = handler.CreateResource(context.Background(), routing.CreateResourceRequest{
+			ResourceID:  "container-4",
+			ServiceType: container.ServiceType,
+			Spec:        spec,
+			EventID:     "ce-4",
+		})
+		Expect(err).To(BeAssignableToTypeOf(&routing.SPResponseError{}))
+		spErr := err.(*routing.SPResponseError)
+		Expect(spErr.StatusCode).To(Equal(http.StatusBadRequest))
+		Expect(spErr.Message).To(ContainSubstring("reserved by DCM"))
+		Expect(repo.lastID).To(BeEmpty())
+	})
+
 	It("maps store errors to SP response errors", func() {
 		repo.createErr = &store.ConflictError{Message: "already exists"}
 

@@ -134,6 +134,24 @@ var _ = Describe("Handler", func() {
 		Expect(mapper.lastID).To(Equal("vm-2"))
 	})
 
+	It("rejects an empty wrapped spec", func() {
+		spec, err := json.Marshal(struct {
+			Spec vmapi.VMSpec `json:"spec"`
+		}{})
+		Expect(err).NotTo(HaveOccurred())
+
+		err = handler.CreateResource(context.Background(), routing.CreateResourceRequest{
+			ResourceID:  "vm-3",
+			ServiceType: vm.ServiceType,
+			Spec:        spec,
+			EventID:     "ce-3",
+		})
+		Expect(err).To(BeAssignableToTypeOf(&routing.SPResponseError{}))
+		spErr := err.(*routing.SPResponseError)
+		Expect(spErr.StatusCode).To(Equal(http.StatusBadRequest))
+		Expect(mapper.lastID).To(BeEmpty())
+	})
+
 	It("returns conflict when the VM already exists", func() {
 		client.getVM = &kubevirtv1.VirtualMachine{
 			ObjectMeta: metav1.ObjectMeta{Name: "existing"},

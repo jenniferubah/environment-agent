@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	vmapi "github.com/dcm-project/environment-agent/api/vm/v1alpha1"
+	embutil "github.com/dcm-project/environment-agent/internal/embedded/util"
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/kubevirt"
 	"github.com/dcm-project/environment-agent/internal/routing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -89,20 +90,17 @@ func (h *vmHandler) DeleteResource(ctx context.Context, req routing.DeleteResour
 }
 
 func parseVMSpec(raw json.RawMessage) (*vmapi.VMSpec, error) {
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("spec is required")
-	}
-
-	var wrapper struct {
-		Spec vmapi.VMSpec `json:"spec"`
-	}
-	if err := json.Unmarshal(raw, &wrapper); err == nil && wrapper.Spec.Metadata.Name != "" {
-		return &wrapper.Spec, nil
+	payload, err := embutil.SpecJSON(raw)
+	if err != nil {
+		return nil, err
 	}
 
 	var spec vmapi.VMSpec
-	if err := json.Unmarshal(raw, &spec); err != nil {
+	if err := json.Unmarshal(payload, &spec); err != nil {
 		return nil, fmt.Errorf("invalid VM spec: %w", err)
+	}
+	if spec.Metadata.Name == "" {
+		return nil, fmt.Errorf("spec.metadata.name is required")
 	}
 	return &spec, nil
 }

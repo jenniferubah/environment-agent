@@ -19,6 +19,7 @@ import (
 
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/config"
 	"github.com/dcm-project/environment-agent/internal/openshift/kubevirtvm/constants"
+	oshutil "github.com/dcm-project/environment-agent/internal/openshift/util"
 )
 
 // Client wraps a typed REST client for KubeVirt VM operations
@@ -117,8 +118,8 @@ func NewClient(cfg *config.Config) (*Client, error) {
 
 // CheckHealth verifies the backing Kubernetes cluster is reachable by calling
 // the API server's version discovery endpoint.
-func (c *Client) CheckHealth(_ context.Context) error {
-	_, err := c.kubeClient.Discovery().ServerVersion()
+func (c *Client) CheckHealth(ctx context.Context) error {
+	err := oshutil.ServerVersion(ctx, c.kubeClient)
 	if err != nil {
 		log.Printf("Warning: kubernetes health check failed: %v", err)
 		return err

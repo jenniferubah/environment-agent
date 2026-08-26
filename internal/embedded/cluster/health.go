@@ -14,8 +14,8 @@ type clusterHealthChecker interface {
 }
 
 func newHealthChecker(checker clusterHealthChecker) monitor.Checker {
-	return monitor.NewEmbeddedChecker(func() monitor.HealthCheckResult {
-		h := checker.Check(context.Background())
+	return monitor.NewEmbeddedChecker(func(ctx context.Context) monitor.HealthCheckResult {
+		h := checker.Check(ctx)
 		if h.Status == nil {
 			return monitor.CheckFailed
 		}

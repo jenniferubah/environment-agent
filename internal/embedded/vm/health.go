@@ -12,8 +12,8 @@ type vmHealthChecker interface {
 }
 
 func newHealthChecker(checker vmHealthChecker) monitor.Checker {
-	return monitor.NewEmbeddedChecker(func() monitor.HealthCheckResult {
-		if err := checker.CheckHealth(context.Background()); err != nil {
+	return monitor.NewEmbeddedChecker(func(ctx context.Context) monitor.HealthCheckResult {
+		if err := checker.CheckHealth(ctx); err != nil {
 			return monitor.CheckUnhealthy
 		}
 		return monitor.CheckHealthy

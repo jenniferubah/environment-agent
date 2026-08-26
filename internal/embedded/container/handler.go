@@ -10,7 +10,9 @@ import (
 	"net/http"
 
 	containerapi "github.com/dcm-project/environment-agent/api/container/v1alpha1"
+	embutil "github.com/dcm-project/environment-agent/internal/embedded/util"
 	"github.com/dcm-project/environment-agent/internal/openshift/container/store"
+	"github.com/dcm-project/environment-agent/internal/openshift/container/validate"
 	"github.com/dcm-project/environment-agent/internal/routing"
 )
 
@@ -45,6 +47,10 @@ func (h *containerHandler) CreateResource(ctx context.Context, req routing.Creat
 		return &routing.SPResponseError{StatusCode: http.StatusBadRequest, Message: err.Error()}
 	}
 
+	if err := validate.ValidateCreate(req.ResourceID, spec); err != nil {
+		return mapStoreError(err)
+	}
+
 	_, err = h.lifecycle.Create(ctx, spec, req.ResourceID)
 	if err != nil {
 		h.logger.Warn("embedded container create failed",
@@ -65,18 +71,17 @@ func (h *containerHandler) DeleteResource(ctx context.Context, req routing.Delet
 }
 
 func parseContainerSpec(raw json.RawMessage) (containerapi.ContainerSpec, error) {
-	if len(raw) == 0 {
-		return containerapi.ContainerSpec{}, fmt.Errorf("spec is required")
-	}
-
-	var container containerapi.Container
-	if err := json.Unmarshal(raw, &container); err == nil && container.Spec.Metadata.Name != "" {
-		return container.Spec, nil
+	payload, err := embutil.SpecJSON(raw)
+	if err != nil {
+		return containerapi.ContainerSpec{}, err
 	}
 
 	var spec containerapi.ContainerSpec
-	if err := json.Unmarshal(raw, &spec); err != nil {
+	if err := json.Unmarshal(payload, &spec); err != nil {
 		return containerapi.ContainerSpec{}, fmt.Errorf("invalid container spec: %w", err)
+	}
+	if spec.Metadata.Name == "" {
+		return containerapi.ContainerSpec{}, fmt.Errorf("spec.metadata.name is required")
 	}
 	return spec, nil
 }
