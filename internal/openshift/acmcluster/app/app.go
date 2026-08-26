@@ -55,7 +55,7 @@ func PrepareConfig(cfg *config.Config) error {
 // Kubernetes clients may be injected via Options; when unset, kubeconfig is loaded automatically.
 func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, opts Options) (*App, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("config is required")
+		panic("acmcluster app: config must not be nil")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -99,7 +99,7 @@ func resolveKubernetesClients(kubeconfigPath string, opts Options) (*rest.Config
 
 	restCfg, err := kubeconfig.RESTConfig(kubeconfigPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("loading kubeconfig: %w", err)
 	}
 
 	scheme, err := util.BuildScheme()

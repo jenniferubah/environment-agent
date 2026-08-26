@@ -49,7 +49,7 @@ var _ = Describe("Handler", func() {
 
 	BeforeEach(func() {
 		svc = &fakeClusterService{}
-		handler = cluster.NewClusterHandler(svc, nil)
+		handler = cluster.NewClusterHandler(svc)
 	})
 
 	It("creates a cluster from the inbound spec", func() {

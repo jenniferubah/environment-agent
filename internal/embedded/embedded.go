@@ -3,6 +3,7 @@ package embedded
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -25,14 +26,14 @@ type Bundles struct {
 func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*Bundles, error) {
 	clusterBundle, err := cluster.Setup(ctx, agentCfg, logger)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cluster embedded setup: %w", err)
 	}
 	containerBundle, err := container.Setup(ctx, agentCfg, logger)
 	if err != nil {
 		if clusterBundle != nil {
 			_ = clusterBundle.Close()
 		}
-		return nil, err
+		return nil, fmt.Errorf("container embedded setup: %w", err)
 	}
 	vmBundle, err := vm.Setup(ctx, agentCfg, logger)
 	if err != nil {
@@ -42,7 +43,7 @@ func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*
 		if containerBundle != nil {
 			_ = containerBundle.Close()
 		}
-		return nil, err
+		return nil, fmt.Errorf("vm embedded setup: %w", err)
 	}
 	return &Bundles{
 		Cluster:   clusterBundle,
@@ -128,11 +129,5 @@ func (b *Bundles) Close() error {
 }
 
 func joinClose(first, next error) error {
-	if first != nil {
-		if next != nil {
-			return fmt.Errorf("%v; %w", first, next)
-		}
-		return first
-	}
-	return next
+	return errors.Join(first, next)
 }

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	containerapi "github.com/dcm-project/environment-agent/api/container/v1alpha1"
@@ -28,17 +27,16 @@ type containerLifecycle interface {
 // containerHandler implements routing.EmbeddedHandler for in-process container lifecycle.
 type containerHandler struct {
 	lifecycle containerLifecycle
-	logger    *slog.Logger
 }
 
 var _ routing.EmbeddedHandler = (*containerHandler)(nil)
 
 // NewContainerHandler creates an embedded container handler.
-func NewContainerHandler(lifecycle containerLifecycle, logger *slog.Logger) routing.EmbeddedHandler {
-	if logger == nil {
-		logger = slog.Default()
+func NewContainerHandler(lifecycle containerLifecycle) routing.EmbeddedHandler {
+	if lifecycle == nil {
+		panic("embedded container handler: lifecycle must not be nil")
 	}
-	return &containerHandler{lifecycle: lifecycle, logger: logger}
+	return &containerHandler{lifecycle: lifecycle}
 }
 
 func (h *containerHandler) CreateResource(ctx context.Context, req routing.CreateResourceRequest) error {
@@ -53,8 +51,6 @@ func (h *containerHandler) CreateResource(ctx context.Context, req routing.Creat
 
 	_, err = h.lifecycle.Create(ctx, spec, req.ResourceID)
 	if err != nil {
-		h.logger.Warn("embedded container create failed",
-			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
 		return mapStoreError(err)
 	}
 	return nil
@@ -63,8 +59,6 @@ func (h *containerHandler) CreateResource(ctx context.Context, req routing.Creat
 func (h *containerHandler) DeleteResource(ctx context.Context, req routing.DeleteResourceRequest) error {
 	err := h.lifecycle.Delete(ctx, req.ResourceID)
 	if err != nil {
-		h.logger.Warn("embedded container delete failed",
-			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
 		return mapStoreError(err)
 	}
 	return nil

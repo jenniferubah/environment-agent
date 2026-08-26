@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	vmapi "github.com/dcm-project/environment-agent/api/vm/v1alpha1"
@@ -33,17 +32,19 @@ type vmMapper interface {
 type vmHandler struct {
 	lifecycle vmLifecycle
 	mapper    vmMapper
-	logger    *slog.Logger
 }
 
 var _ routing.EmbeddedHandler = (*vmHandler)(nil)
 
 // NewVMHandler creates an embedded VM handler.
-func NewVMHandler(lifecycle vmLifecycle, mapper vmMapper, logger *slog.Logger) routing.EmbeddedHandler {
-	if logger == nil {
-		logger = slog.Default()
+func NewVMHandler(lifecycle vmLifecycle, mapper vmMapper) routing.EmbeddedHandler {
+	if lifecycle == nil {
+		panic("embedded VM handler: lifecycle must not be nil")
 	}
-	return &vmHandler{lifecycle: lifecycle, mapper: mapper, logger: logger}
+	if mapper == nil {
+		panic("embedded VM handler: mapper must not be nil")
+	}
+	return &vmHandler{lifecycle: lifecycle, mapper: mapper}
 }
 
 func (h *vmHandler) CreateResource(ctx context.Context, req routing.CreateResourceRequest) error {
@@ -64,14 +65,12 @@ func (h *vmHandler) CreateResource(ctx context.Context, req routing.CreateResour
 	if err != nil {
 		return &routing.SPResponseError{
 			StatusCode: http.StatusBadRequest,
-			Message:    fmt.Sprintf("failed to convert VM spec: %v", err),
+			Message:    fmt.Sprintf("failed to convert VM spec: %s", err.Error()),
 		}
 	}
 
 	_, err = h.lifecycle.CreateVirtualMachine(ctx, virtualMachine)
 	if err != nil {
-		h.logger.Warn("embedded VM create failed",
-			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
 		code, msg := kubevirt.HTTPError(err, "failed to create virtual machine")
 		return &routing.SPResponseError{StatusCode: code, Message: msg}
 	}
@@ -81,8 +80,6 @@ func (h *vmHandler) CreateResource(ctx context.Context, req routing.CreateResour
 func (h *vmHandler) DeleteResource(ctx context.Context, req routing.DeleteResourceRequest) error {
 	err := h.lifecycle.DeleteVirtualMachine(ctx, req.ResourceID)
 	if err != nil {
-		h.logger.Warn("embedded VM delete failed",
-			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
 		code, msg := kubevirt.HTTPError(err, "failed to delete virtual machine")
 		return &routing.SPResponseError{StatusCode: code, Message: msg}
 	}

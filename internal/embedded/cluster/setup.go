@@ -52,7 +52,7 @@ func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*
 
 	return &Bundle{
 		App:     a,
-		Handler: NewClusterHandler(a.ClusterService(), logger),
+		Handler: NewClusterHandler(a.ClusterService()),
 		Checker: newHealthChecker(a.HealthChecker()),
 	}, nil
 }

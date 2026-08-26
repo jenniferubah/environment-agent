@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	clusterapi "github.com/dcm-project/environment-agent/api/cluster/v1alpha1"
@@ -25,17 +24,16 @@ type clusterLifecycle interface {
 // clusterHandler implements routing.EmbeddedHandler for in-process cluster lifecycle.
 type clusterHandler struct {
 	lifecycle clusterLifecycle
-	logger    *slog.Logger
 }
 
 var _ routing.EmbeddedHandler = (*clusterHandler)(nil)
 
 // NewClusterHandler creates an embedded cluster handler.
-func NewClusterHandler(lifecycle clusterLifecycle, logger *slog.Logger) routing.EmbeddedHandler {
-	if logger == nil {
-		logger = slog.Default()
+func NewClusterHandler(lifecycle clusterLifecycle) routing.EmbeddedHandler {
+	if lifecycle == nil {
+		panic("embedded cluster handler: lifecycle must not be nil")
 	}
-	return &clusterHandler{lifecycle: lifecycle, logger: logger}
+	return &clusterHandler{lifecycle: lifecycle}
 }
 
 func (h *clusterHandler) CreateResource(ctx context.Context, req routing.CreateResourceRequest) error {
@@ -46,8 +44,6 @@ func (h *clusterHandler) CreateResource(ctx context.Context, req routing.CreateR
 
 	_, err = h.lifecycle.Create(ctx, req.ResourceID, cluster)
 	if err != nil {
-		h.logger.Warn("embedded cluster create failed",
-			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
 		return mapServiceError(err)
 	}
 	return nil
@@ -56,8 +52,6 @@ func (h *clusterHandler) CreateResource(ctx context.Context, req routing.CreateR
 func (h *clusterHandler) DeleteResource(ctx context.Context, req routing.DeleteResourceRequest) error {
 	err := h.lifecycle.Delete(ctx, req.ResourceID)
 	if err != nil {
-		h.logger.Warn("embedded cluster delete failed",
-			"resource_id", req.ResourceID, "ce_id", req.EventID, "error", err)
 		return mapServiceError(err)
 	}
 	return nil

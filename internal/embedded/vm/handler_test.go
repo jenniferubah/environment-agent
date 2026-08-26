@@ -101,7 +101,7 @@ var _ = Describe("Handler", func() {
 	BeforeEach(func() {
 		client = &fakeVMClient{}
 		mapper = &fakeVMMapper{}
-		handler = vm.NewVMHandler(client, mapper, nil)
+		handler = vm.NewVMHandler(client, mapper)
 	})
 
 	It("creates a VM from a wrapped resource spec", func() {

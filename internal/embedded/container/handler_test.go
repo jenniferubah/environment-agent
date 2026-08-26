@@ -72,7 +72,7 @@ var _ = Describe("Handler", func() {
 
 	BeforeEach(func() {
 		repo = &fakeContainerStore{}
-		handler = container.NewContainerHandler(repo, nil)
+		handler = container.NewContainerHandler(repo)
 	})
 
 	It("creates a container from a wrapped resource spec", func() {

@@ -32,7 +32,7 @@ type Options struct {
 // New constructs an App: KubeVirt client, mapper, and optional event monitor.
 func New(_ context.Context, cfg *config.Config, logger *slog.Logger, opts Options) (*App, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("config is required")
+		panic("kubevirtvm app: config must not be nil")
 	}
 	if logger == nil {
 		logger = slog.Default()

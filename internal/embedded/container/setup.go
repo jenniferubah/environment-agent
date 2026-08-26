@@ -49,7 +49,7 @@ func Setup(ctx context.Context, agentCfg *config.Config, logger *slog.Logger) (*
 
 	return &Bundle{
 		App:     a,
-		Handler: NewContainerHandler(a.Store(), logger),
+		Handler: NewContainerHandler(a.Store()),
 		Checker: newHealthChecker(a.Store()),
 	}, nil
 }
