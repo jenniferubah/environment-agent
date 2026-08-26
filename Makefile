@@ -113,13 +113,7 @@ generate-container-spec:
 		-o api/container/v1alpha1/spec.gen.go \
 		api/container/v1alpha1/openapi.yaml
 
-generate-container-server:
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
-		--config=internal/openshift/container/oapi/server/server.gen.cfg \
-		-o internal/openshift/container/oapi/server/server.gen.go \
-		api/container/v1alpha1/openapi.yaml
-
-generate-container-api: generate-container-types generate-container-spec generate-container-server
+generate-container-api: generate-container-types generate-container-spec
 
 bundle-vm-openapi:
 	@echo "Bundling VM OpenAPI specification..."
@@ -157,7 +151,7 @@ generate-api: generate-types generate-spec generate-server generate-client gener
 
 check-generate-api: generate-api
 	git diff --exit-code api/ internal/api/server/ pkg/client/ \
-		internal/openshift/container/oapi/server/ internal/openshift/kubevirtvm/oapi/server/ || \
+		internal/openshift/kubevirtvm/oapi/server/ || \
 		(echo "Generated files out of sync. Run 'make generate-api'." && exit 1)
 
 check-aep:

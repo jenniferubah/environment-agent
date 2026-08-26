@@ -62,6 +62,9 @@ type AgentConfig struct {
 	Name        string `env:"NAME"`
 	Environment string `env:"ENVIRONMENT"`
 	Cost        string `env:"COST"`
+	// Kubeconfig is the default kubeconfig path for embedded SPs (AGENT_KUBECONFIG).
+	// When empty, SPs use in-cluster configuration unless overridden per SP.
+	Kubeconfig string `env:"KUBECONFIG"`
 }
 
 // DCMConfig holds DCM registration configuration.

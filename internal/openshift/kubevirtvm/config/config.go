@@ -1,77 +1,38 @@
-// Package config handles configuration loading for the kubevirt VM service provider.
+// Package config handles configuration loading for the embedded kubevirt VM service provider.
 package config
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/kelseyhightower/envconfig"
+	"github.com/caarlos0/env/v11"
+	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 )
 
-type ProviderConfig struct {
-	ListenAddress string `envconfig:"PROVIDER_LISTEN_ADDRESS" default:"0.0.0.0:8081"`
-	// Name is the name to register this provider as
-	Name string `envconfig:"PROVIDER_NAME" default:"kubevirt-provider"`
-	// Endpoint is the external endpoint where this provider can be reached
-	Endpoint string `envconfig:"PROVIDER_ENDPOINT" default:"http://localhost:8081/api/v1alpha1"`
-	// ServiceType is the type of service this provider offers
-	ServiceType string `envconfig:"PROVIDER_SERVICE_TYPE" default:"vm"`
-	// SchemaVersion is the API schema version
-	SchemaVersion string `envconfig:"PROVIDER_SCHEMA_VERSION" default:"v1alpha1"`
-	// ID is the ID of this provider
-	ID string `envconfig:"PROVIDER_ID" default:"c9243c71-5ae0-4ee2-8a28-a83b3cb38d98"`
-	// HTTPTimeout is the timeout for HTTP client requests
-	HTTPTimeout time.Duration `envconfig:"PROVIDER_HTTP_TIMEOUT" default:"30s"`
-}
+const defaultProviderName = "kubevirt-vm-sp"
 
-// ServiceProviderManagerConfig holds configuration for registering with Service Provider Manager
-type ServiceProviderManagerConfig struct {
-	// Endpoint is the URL of the Service Manager API
-	Endpoint string `envconfig:"SERVICE_MANAGER_ENDPOINT" default:"http://localhost:8080/api/v1alpha1"`
-}
-
-// KubernetesConfig holds configuration for connecting to Kubernetes/KubeVirt
-type KubernetesConfig struct {
-	// Kubeconfig path for connecting to Kubernetes cluster (optional, defaults to in-cluster)
-	Kubeconfig string `envconfig:"KUBERNETES_KUBECONFIG"`
-	// Namespace for creating VMs
-	Namespace string `envconfig:"KUBERNETES_NAMESPACE" default:"default"`
-	// Timeout for Kubernetes API requests
-	Timeout time.Duration `envconfig:"KUBERNETES_TIMEOUT" default:"60s"`
-	// MaxRetries for failed operations
-	MaxRetries int `envconfig:"KUBERNETES_MAX_RETRIES" default:"3"`
-}
-
-// NATSConfig holds configuration for NATS connection
-type NATSConfig struct {
-	// URL is the NATS server URL
-	URL string `envconfig:"NATS_URL" default:"nats://localhost:4222"`
-	// MaxReconnect attempts (-1 for unlimited)
-	MaxReconnect int `envconfig:"NATS_MAX_RECONNECT" default:"-1"`
-	// ReconnectWait time between reconnect attempts
-	ReconnectWait time.Duration `envconfig:"NATS_RECONNECT_WAIT" default:"2s"`
-	// Subject is the JetStream subject for VM events
-	Subject string `envconfig:"NATS_SUBJECT" default:"dcm.vm"`
-}
-
-// EventConfig holds configuration for event monitoring
-type EventConfig struct {
-	// Enabled controls whether event monitoring is active
-	Enabled bool `envconfig:"EVENTS_ENABLED" default:"true"`
-	// ResyncPeriod for Kubernetes informers
-	ResyncPeriod time.Duration `envconfig:"EVENTS_RESYNC_PERIOD" default:"30m"`
-}
-
+// Config is the root configuration for the embedded VM service provider.
 type Config struct {
-	ProviderConfig               *ProviderConfig
-	ServiceProviderManagerConfig *ServiceProviderManagerConfig
-	KubernetesConfig             *KubernetesConfig
-	NATSConfig                   *NATSConfig
-	EventConfig                  *EventConfig
+	shared.Config
+	Namespace          string        `env:"KUBERNETES_NAMESPACE" envDefault:"default"`
+	Timeout            time.Duration `env:"KUBERNETES_TIMEOUT" envDefault:"60s"`
+	MaxRetries         int           `env:"KUBERNETES_MAX_RETRIES" envDefault:"3"`
+	NATSMaxReconnect   int           `env:"NATS_MAX_RECONNECT" envDefault:"-1"`
+	NATSSubject        string        `env:"NATS_SUBJECT" envDefault:"dcm.vm"`
+	EventsEnabled      bool          `env:"EVENTS_ENABLED" envDefault:"true"`
+	EventsResyncPeriod time.Duration `env:"EVENTS_RESYNC_PERIOD" envDefault:"30m"`
 }
 
-func Load() (*Config, error) {
+// Load reads VM SP configuration from environment variables.
+func Load(agent shared.Agent) (*Config, error) {
 	cfg := &Config{}
-	if err := envconfig.Process("", cfg); err != nil {
+	if err := env.Parse(cfg); err != nil {
+		return nil, fmt.Errorf("loading VM SP config: %w", err)
+	}
+	if cfg.Name == "" {
+		cfg.Name = defaultProviderName
+	}
+	if err := shared.Apply(&cfg.Config, agent); err != nil {
 		return nil, err
 	}
 	return cfg, nil

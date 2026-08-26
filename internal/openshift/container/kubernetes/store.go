@@ -8,6 +8,7 @@ import (
 
 	v1alpha1 "github.com/dcm-project/environment-agent/api/container/v1alpha1"
 	"github.com/dcm-project/environment-agent/internal/openshift/container/store"
+	oshutil "github.com/dcm-project/environment-agent/internal/openshift/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,8 +34,8 @@ func NewK8sContainerStore(client kubernetes.Interface, cfg K8sConfig, logger *sl
 
 // CheckHealth verifies the backing Kubernetes cluster is reachable by calling
 // the API server's version discovery endpoint.
-func (s *K8sContainerStore) CheckHealth(_ context.Context) error {
-	_, err := s.client.Discovery().ServerVersion()
+func (s *K8sContainerStore) CheckHealth(ctx context.Context) error {
+	err := oshutil.ServerVersion(ctx, s.client)
 	if err != nil {
 		s.logger.Warn("kubernetes health check failed", "error", err)
 		return err

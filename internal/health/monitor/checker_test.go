@@ -60,3 +60,19 @@ var _ = Describe("ExternalChecker", Label("unit"), func() {
 		})
 	})
 })
+
+var _ = Describe("EmbeddedChecker", Label("unit"), func() {
+	It("passes context to the check function", func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		checker := monitor.NewEmbeddedChecker(func(ctx context.Context) monitor.HealthCheckResult {
+			if ctx.Err() != nil {
+				return monitor.CheckFailed
+			}
+			return monitor.CheckHealthy
+		})
+
+		Expect(checker.Check(ctx)).To(Equal(monitor.CheckFailed))
+	})
+})

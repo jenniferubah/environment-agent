@@ -60,23 +60,23 @@ func (c *ExternalChecker) Check(ctx context.Context) HealthCheckResult {
 
 // EmbeddedChecker performs an in-process health check.
 type EmbeddedChecker struct {
-	checkFn func() HealthCheckResult
+	checkFn func(context.Context) HealthCheckResult
 }
 
 // NewEmbeddedChecker creates an EmbeddedChecker backed by checkFn.
-func NewEmbeddedChecker(checkFn func() HealthCheckResult) *EmbeddedChecker {
+func NewEmbeddedChecker(checkFn func(context.Context) HealthCheckResult) *EmbeddedChecker {
 	return &EmbeddedChecker{checkFn: checkFn}
 }
 
-func (c *EmbeddedChecker) Check(_ context.Context) HealthCheckResult {
-	return c.checkFn()
+func (c *EmbeddedChecker) Check(ctx context.Context) HealthCheckResult {
+	return c.checkFn(ctx)
 }
 
 // DefaultEmbeddedCheckFn returns a check function that reads health from
 // AGENT_EMBEDDED_SP_{TYPE}_HEALTH. Unset/empty → CheckHealthy.
-func DefaultEmbeddedCheckFn(serviceType string) func() HealthCheckResult {
+func DefaultEmbeddedCheckFn(serviceType string) func(context.Context) HealthCheckResult {
 	key := "AGENT_EMBEDDED_SP_" + strings.ToUpper(serviceType) + "_HEALTH"
-	return func() HealthCheckResult {
+	return func(_ context.Context) HealthCheckResult {
 		val := strings.ToLower(os.Getenv(key))
 		switch val {
 		case "", "healthy":

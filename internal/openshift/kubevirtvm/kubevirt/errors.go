@@ -120,3 +120,16 @@ func MapKubernetesErrorForList(err error) server.ListVMsResponseObject {
 		StatusCode: statusCode,
 	}
 }
+
+// HTTPError maps a Kubernetes API error to an HTTP status code and message.
+func HTTPError(err error, fallback string) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, fallback
+	}
+	body, code := classifyKubernetesError(err, fallback)
+	msg := fallback
+	if body.Detail != nil && *body.Detail != "" {
+		msg = *body.Detail
+	}
+	return code, msg
+}
