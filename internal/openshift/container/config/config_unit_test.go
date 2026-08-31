@@ -16,6 +16,7 @@ var _ = Describe("Configuration", func() {
 
 	clearEnv := func() {
 		_ = os.Unsetenv("SP_NAME")
+		_ = os.Unsetenv("SP_CONTAINER_NAMESPACE")
 		_ = os.Unsetenv("SP_K8S_EXTERNAL_SVC_TYPE")
 		_ = os.Unsetenv("SP_KUBECONFIG")
 		_ = os.Unsetenv("SP_MONITOR_DEBOUNCE_MS")
@@ -80,7 +81,7 @@ var _ = Describe("Configuration", func() {
 		Expect(err.Error()).To(ContainSubstring("must be LoadBalancer or NodePort"))
 	})
 
-	It("uses agent kubeconfig when SP_KUBECONFIG is unset", func() {
+	It("uses SP_DEFAULT_KUBECONFIG when SP_KUBECONFIG is unset", func() {
 		_ = os.Setenv("SP_K8S_EXTERNAL_SVC_TYPE", "NodePort")
 
 		cfg, err := config.Load(shared.Agent{
@@ -89,5 +90,22 @@ var _ = Describe("Configuration", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
+	})
+
+	It("uses SP_CONTAINER_NAMESPACE when set", func() {
+		_ = os.Setenv("SP_K8S_EXTERNAL_SVC_TYPE", "NodePort")
+		_ = os.Setenv("SP_CONTAINER_NAMESPACE", "containers")
+
+		cfg, err := config.Load(shared.Agent{MessagingURL: "nats://test:4222"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Namespace).To(Equal("containers"))
+	})
+
+	It("defaults namespace to default when SP_CONTAINER_NAMESPACE is unset", func() {
+		_ = os.Setenv("SP_K8S_EXTERNAL_SVC_TYPE", "NodePort")
+
+		cfg, err := config.Load(shared.Agent{MessagingURL: "nats://test:4222"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Namespace).To(Equal("default"))
 	})
 })
