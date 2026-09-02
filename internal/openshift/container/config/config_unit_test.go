@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	agentconfig "github.com/dcm-project/environment-agent/internal/config"
 	"github.com/dcm-project/environment-agent/internal/openshift/container/config"
 	"github.com/dcm-project/environment-agent/internal/openshift/shared"
 )
@@ -81,13 +82,26 @@ var _ = Describe("Configuration", func() {
 		Expect(err.Error()).To(ContainSubstring("must be LoadBalancer or NodePort"))
 	})
 
-	It("uses SP_DEFAULT_KUBECONFIG when SP_KUBECONFIG is unset", func() {
+	It("uses kubeconfig from shared.Agent when SP_KUBECONFIG is unset", func() {
 		_ = os.Setenv("SP_K8S_EXTERNAL_SVC_TYPE", "NodePort")
 
 		cfg, err := config.Load(shared.Agent{
 			MessagingURL: "nats://test:4222",
 			Kubeconfig:   "/etc/agent/kubeconfig",
 		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
+	})
+
+	It("uses SP_DEFAULT_KUBECONFIG via config.Load and FromAgent when SP_KUBECONFIG is unset", func() {
+		_ = os.Setenv("SP_K8S_EXTERNAL_SVC_TYPE", "NodePort")
+		GinkgoT().Setenv("SP_DEFAULT_KUBECONFIG", "/etc/agent/kubeconfig")
+		GinkgoT().Setenv("AGENT_MESSAGING_URL", "nats://test:4222")
+
+		agentCfg, err := agentconfig.Load()
+		Expect(err).NotTo(HaveOccurred())
+
+		cfg, err := config.Load(shared.FromAgent(agentCfg))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
 	})

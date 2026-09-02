@@ -66,7 +66,7 @@ var _ = Describe("Config", func() {
 		Expect(err.Error()).To(ContainSubstring("messaging URL is required"))
 	})
 
-	It("uses SP_DEFAULT_KUBECONFIG when SP_KUBECONFIG is unset", func() {
+	It("uses kubeconfig from shared.Agent when SP_KUBECONFIG is unset", func() {
 		setAllRequired()
 
 		cfg, err := config.Load(shared.Agent{
@@ -77,7 +77,7 @@ var _ = Describe("Config", func() {
 		Expect(cfg.Kubeconfig).To(Equal("/etc/agent/kubeconfig"))
 	})
 
-	It("prefers SP_KUBECONFIG over SP_DEFAULT_KUBECONFIG", func() {
+	It("prefers SP_KUBECONFIG over kubeconfig from shared.Agent", func() {
 		setAllRequired()
 		GinkgoT().Setenv("SP_KUBECONFIG", "/sp/kubeconfig")
 
